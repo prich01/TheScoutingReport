@@ -6,7 +6,7 @@
   <title>The Scouting Report</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Custom CSS for navigation styling -->
+  <!-- Custom CSS -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex">
@@ -24,7 +24,7 @@
     <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
       <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Opponent</label>
       <select id="opponentSelect" onchange="handleOpponentChange()" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
-        <!-- Dynamically populated by storage.js -->
+        <!-- Dynamically populated -->
       </select>
       <div class="flex gap-1.5 pt-1">
         <button onclick="addOpponent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1 rounded border border-slate-700 font-semibold">+ Add</button>
@@ -69,10 +69,11 @@
     <!-- View 2: Uploading -->
     <section id="view-uploading" class="tab-view hidden space-y-6">
       <div>
-        <h2 class="text-2xl font-bold text-white">Upload GameChanger Logs</h2>
-        <p class="text-xs text-slate-400 mt-1">Paste play-by-play text exported from GameChanger to update active scouting models.</p>
+        <h2 class="text-2xl font-bold text-white">Upload GameChanger Logs & Roster</h2>
+        <p class="text-xs text-slate-400 mt-1">Paste play-by-play logs and edit player handedness and jersey numbers for scouting accuracy.</p>
       </div>
 
+      <!-- Top Row: Upload Form + Stored Games -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         <!-- Input Form (2 Columns Wide) -->
@@ -90,31 +91,63 @@
 
           <div>
             <label class="block text-xs font-bold text-slate-400 uppercase mb-1">GameChanger Play-by-Play Text</label>
-            <textarea id="pbpInput" rows="10" placeholder="Paste full GameChanger Play-by-Play log here..." class="w-full bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
+            <textarea id="pbpInput" rows="8" placeholder="Paste full GameChanger Play-by-Play log here..." class="w-full bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
           </div>
 
           <div class="flex justify-between items-center pt-2">
             <span id="uploadStatus" class="text-xs text-emerald-400 font-semibold"></span>
             <button onclick="handleSaveGameLog()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-5 py-2.5 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
-              <span>💾</span> <span>Save Game Log</span>
+              <span>💾</span> <span>Save Game Log & Auto-Extract Roster</span>
             </button>
           </div>
         </div>
 
-        <!-- Stored Games List for Active Opponent (1 Column Wide) -->
+        <!-- Stored Games List (1 Column Wide) -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl flex flex-col">
           <div class="border-b border-slate-800 pb-3">
             <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Loaded Games</h3>
             <p id="loadedGamesSubheader" class="text-[11px] text-emerald-400 font-semibold mt-0.5">For Ridgeview High</p>
           </div>
 
-          <div id="gamesListContainer" class="flex-1 space-y-2 overflow-y-auto max-h-[350px]">
-            <!-- Dynamically populated by js/app.js -->
+          <div id="gamesListContainer" class="flex-1 space-y-2 overflow-y-auto max-h-[300px]">
             <p class="text-xs text-slate-500 italic">No games saved for this opponent yet.</p>
           </div>
         </div>
 
       </div>
+
+      <!-- Bottom Row: Opponent Roster Editor -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+          <div>
+            <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider">Opponent Roster & Handedness Editor</h3>
+            <p id="rosterSubheader" class="text-xs text-slate-400 mt-0.5">Auto-extracted from game logs or added manually. Updates save instantly.</p>
+          </div>
+          <button onclick="handleManualAddPlayer()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded border border-slate-700 font-semibold">
+            + Add Player
+          </button>
+        </div>
+
+        <!-- Roster Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
+              <tr>
+                <th class="p-2.5 w-16">Jersey #</th>
+                <th class="p-2.5">Player Name</th>
+                <th class="p-2.5 w-24">Bats</th>
+                <th class="p-2.5 w-24">Throws</th>
+                <th class="p-2.5 w-28">Primary Pos</th>
+                <th class="p-2.5 w-12 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="rosterTableBody" class="divide-y divide-slate-800/60">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </section>
 
     <!-- View 3: Opponent Reports -->
