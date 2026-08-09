@@ -1,26 +1,50 @@
 /**
- * The Scouting Report - GameChanger Log Parser (js/parser.js)
+ * The Scouting Report - Custom GameChanger Log Parser (js/parser.js)
  */
 
+/**
+ * Parses a GameChanger play-by-play log.
+ * @param {string} rawText - Raw play-by-play text.
+ * @param {string} opponentName - Selected opponent to filter stats for (optional).
+ */
 function parseGameLog(rawText, opponentName = '') {
   if (!rawText) return { stats: [], metadata: {} };
 
   const lines = rawText.split('\n');
   const playerMap = {};
 
+  let currentBattingTeam = '';
+  let currentInningHalf = ''; // 'TOP' or 'BOTTOM'
+
   lines.forEach(line => {
     const trimmed = line.trim();
-    if (!trimmed || isHeaderOrNoiseLine(trimmed)) return;
+    if (!trimmed) return;
 
+    // Detect Inning Headers (e.g., "Top 1st - Bearden Varsity Bulldogs", "Bottom 1st - Oak Ridge Varsity Wildcats")
+    const headerMatch = trimmed.match(/^(Top|Bottom)\s+\d+(?:st|nd|rd|th)?\s*-\s*(.*)$/i);
+    if (headerMatch) {
+      currentInningHalf = headerMatch[1].toUpperCase();
+      currentBattingTeam = headerMatch[2].trim();
+      return;
+    }
+
+    // Ignore pitch counts, out markers, and noise
+    if (isNoiseLine(trimmed)) return;
+
+    // Parse the play line
     const playData = parsePlayLine(trimmed);
     if (!playData || !playData.playerName) return;
 
     const name = playData.playerName;
 
+    // Optional team filtering: If opponentName is set, you can filter by team
+    // (If no filtering is active, it will collect all players in the log)
+
     if (!playerMap[name]) {
       playerMap[name] = {
         name: name,
         number: '00',
+        team: currentBattingTeam,
         pa: 0,
         ab: 0,
         hits: 0,
@@ -31,8 +55,7 @@ function parseGameLog(rawText, opponentName = '') {
         bb: 0,
         so: 0,
         hbp: 0,
-        sf: 0,
-        rbis: 0
+        sf: 0
       };
     }
 
@@ -50,57 +73,67 @@ function parseGameLog(rawText, opponentName = '') {
   };
 }
 
-function isHeaderOrNoiseLine(line) {
+/**
+ * Ignores count lines, score markers, and substitutions.
+ */
+function isNoiseLine(line) {
   const lower = line.toLowerCase();
   if (line.length < 3) return true;
-  
-  const noise = [
-    'gamechanger', 'lineup', 'pitching change', 'substitution',
-    'ball', 'strike', 'foul', 'in play', 'top of', 'bottom of',
-    'inning summary', 'half summary'
-  ];
-  return noise.some(kw => lower === kw || lower.startsWith('top of') || lower.startsWith('bottom of'));
+
+  // Ignore lines like "1 Out", "BRDN 0 - OKRD 1", "Ball 1, Strike 1", "Lineup changed..."
+  if (/^\d+\s+Outs?/i.test(line)) return true;
+  if (/^[A-Z]{3,4}\s+\d+\s*-\s*[A-Z]{3,4}\s+\d+/i.test(line)) return true;
+  if (lower.startsWith('ball ') || lower.startsWith('strike ') || lower.startsWith('foul') || lower.startsWith('in play') || lower.startsWith('pickoff')) return true;
+  if (lower.startsWith('lineup changed') || lower.startsWith('courtesy runner')) return true;
+
+  const headings = ['strikeout', 'single', 'double', 'triple', 'home run', 'ground out', 'fly out', 'line out', 'pop out', 'walk', 'hit by pitch', 'error', 'fielder\'s choice', 'dropped 3rd strike', 'sacrifice bunt'];
+  if (headings.includes(lower)) return true;
+
+  return false;
 }
 
+/**
+ * Parses individual play lines from GameChanger logs.
+ */
 function parsePlayLine(line) {
-  // 1. Clean line of lead numbers or hashes
-  let clean = line.replace(/^[\d#\.\s]+/, '').trim();
+  let clean = line.trim();
 
-  // 2. Extract potential player name (Looks for "First Last" pattern at start of string)
-  // Stops before action verbs or punctuation
-  const nameMatch = clean.match(/^([A-Z][a-zA-Z\.\'-]+(?:\s+[A-Z][a-zA-Z\.\'-]+)+)/);
-  if (!nameMatch) return null;
+  // Pattern for "Name is hit by pitch" -> strip "is hit by pitch"
+  if (/^([A-Z][a-zA-Z\.\'-]+(?:\s+[A-Z][a-zA-Z\.\'-]+)+)\s+is hit by pitch/i.test(clean)) {
+    const match = clean.match(/^([A-Z][a-zA-Z\.\'-]+(?:\s+[A-Z][a-zA-Z\.\'-]+)+)/i);
+    return { playerName: match[1].trim(), event: 'HBP' };
+  }
 
-  let rawName = nameMatch[1].trim();
+  // General Pattern: [Player Name] [Action Verb] [Details]
+  const playRegex = /^([A-Z][a-zA-Z\.\'-]+(?:\s+[A-Z][a-zA-Z\.\'-]+)+)\s+(singles|doubles|triples|homers|walks|strikes out|grounds|flies|lines|pops|bunts|reaches|sacrifices|out)\b/i;
+  const match = clean.match(playRegex);
 
-  // Strip trailing verbs if captured into the name string
-  let cleanedName = rawName
-    .replace(/\s+(is|was|singles|doubles|triples|homers|walks|strikes|grounds|flies|lines|pops|hit|bunts|reaches|sacrifices|out)$/i, '')
-    .trim();
+  if (!match) return null;
 
-  if (cleanedName.length < 3) return null;
-
-  // 3. Determine event type from the sentence
+  const playerName = match[1].trim();
+  const verb = match[2].toLowerCase();
   const lowerLine = clean.toLowerCase();
+
   let event = 'UNKNOWN';
 
-  if (lowerLine.includes('singles')) event = 'SINGLE';
-  else if (lowerLine.includes('doubles')) event = 'DOUBLE';
-  else if (lowerLine.includes('triples')) event = 'TRIPLE';
-  else if (lowerLine.includes('homers') || lowerLine.includes('home run')) event = 'HR';
-  else if (lowerLine.includes('walks') || lowerLine.includes('base on balls')) event = 'BB';
-  else if (lowerLine.includes('hit by pitch')) event = 'HBP';
-  else if (lowerLine.includes('strikes out') || lowerLine.includes('struck out')) event = 'SO';
+  if (verb === 'singles') event = 'SINGLE';
+  else if (verb === 'doubles') event = 'DOUBLE';
+  else if (verb === 'triples') event = 'TRIPLE';
+  else if (verb === 'homers') event = 'HR';
+  else if (verb === 'walks') event = 'BB';
+  else if (verb === 'strikes out') event = 'SO';
   else if (lowerLine.includes('grounds out') || lowerLine.includes('flies out') || lowerLine.includes('lines out') || lowerLine.includes('pops out') || lowerLine.includes('out at')) event = 'OUT';
   else if (lowerLine.includes('reaches on an error') || lowerLine.includes('error by')) event = 'ROE';
-  else if (lowerLine.includes('stolen base') || lowerLine.includes('steals')) event = 'SB';
+  else if (lowerLine.includes('sacrifices')) event = 'SAC';
 
-  // Return parsed data if an action or player was found
-  return { playerName: cleanedName, event: event };
+  return { playerName: playerName, event: event };
 }
 
+/**
+ * Updates stats counters based on parsed event.
+ */
 function applyEventToStats(player, event) {
-  if (event === 'UNKNOWN' || event === 'SB') return;
+  if (event === 'UNKNOWN') return;
 
   player.pa += 1;
 
@@ -139,9 +172,15 @@ function applyEventToStats(player, event) {
     case 'ROE':
       player.ab += 1;
       break;
+    case 'SAC':
+      player.sf += 1; // Sacrifices don't count as AB
+      break;
   }
 }
 
+/**
+ * Calculates standard slash line stats.
+ */
 function calculateSlashLines(player) {
   const ab = player.ab || 0;
   const hits = player.hits || 0;
