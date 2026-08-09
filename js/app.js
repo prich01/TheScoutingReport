@@ -2,14 +2,13 @@
  * The Scouting Report - Main Controller (js/app.js)
  */
 
-// Initialize app data on page load
 document.addEventListener('DOMContentLoaded', () => {
   refreshOpponentDropdown();
   setDefaultGameDate();
   renderGamesList();
+  renderRosterTable();
 });
 
-// Sets the upload date input to today's date
 function setDefaultGameDate() {
   const dateInput = document.getElementById('gameDateInput');
   if (dateInput) {
@@ -17,7 +16,6 @@ function setDefaultGameDate() {
   }
 }
 
-// Populate Opponent Dropdown from storage.js
 function refreshOpponentDropdown(selectedName = null) {
   const selectEl = document.getElementById('opponentSelect');
   if (!selectEl) return;
@@ -37,14 +35,14 @@ function refreshOpponentDropdown(selectedName = null) {
   });
 
   renderGamesList();
+  renderRosterTable();
 }
 
-// Triggered when changing opponent in sidebar dropdown
 function handleOpponentChange() {
   renderGamesList();
+  renderRosterTable();
 }
 
-// Renders saved games for the active opponent
 function renderGamesList() {
   const selectEl = document.getElementById('opponentSelect');
   const container = document.getElementById('gamesListContainer');
@@ -84,7 +82,122 @@ function renderGamesList() {
   });
 }
 
-// Saves pasted GameChanger log to active opponent
+// --- ROSTER UI RENDERER & HANDLERS ---
+
+function renderRosterTable() {
+  const selectEl = document.getElementById('opponentSelect');
+  const tbody = document.getElementById('rosterTableBody');
+  const subheader = document.getElementById('rosterSubheader');
+
+  if (!selectEl || !tbody) return;
+
+  const activeOpponent = selectEl.value;
+  if (subheader) subheader.innerText = `Roster details for ${activeOpponent || 'Selected Team'}. Auto-saves on edit.`;
+
+  if (!activeOpponent) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">No opponent selected.</td></tr>`;
+    return;
+  }
+
+  const roster = getOpponentRoster(activeOpponent);
+
+  if (roster.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">No roster players found. Upload a game log above or click "+ Add Player".</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = '';
+  roster.forEach(player => {
+    const tr = document.createElement('tr');
+    tr.className = "hover:bg-slate-950/50 transition";
+
+    tr.innerHTML = `
+      <td class="p-2">
+        <input type="text" value="${player.number || ''}" placeholder="#" 
+               onchange="handleUpdateRoster('${player.name}', 'number', this.value)"
+               class="w-12 bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs text-center font-bold text-emerald-400 focus:outline-none focus:border-emerald-500">
+      </td>
+      <td class="p-2 font-semibold text-slate-200">
+        ${player.name}
+      </td>
+      <td class="p-2">
+        <select onchange="handleUpdateRoster('${player.name}', 'bats', this.value)" 
+                class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs font-semibold focus:outline-none focus:border-emerald-500">
+          <option value="R" ${player.bats === 'R' ? 'selected' : ''}>Right (R)</option>
+          <option value="L" ${player.bats === 'L' ? 'selected' : ''}>Left (L)</option>
+          <option value="S" ${player.bats === 'S' ? 'selected' : ''}>Switch (S)</option>
+        </select>
+      </td>
+      <td class="p-2">
+        <select onchange="handleUpdateRoster('${player.name}', 'throws', this.value)" 
+                class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs font-semibold focus:outline-none focus:border-emerald-500">
+          <option value="R" ${player.throws === 'R' ? 'selected' : ''}>Right (R)</option>
+          <option value="L" ${player.throws === 'L' ? 'selected' : ''}>Left (L)</option>
+        </select>
+      </td>
+      <td class="p-2">
+        <select onchange="handleUpdateRoster('${player.name}', 'pos', this.value)" 
+                class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs focus:outline-none focus:border-emerald-500">
+          <option value="P" ${player.pos === 'P' ? 'selected' : ''}>P - Pitcher</option>
+          <option value="C" ${player.pos === 'C' ? 'selected' : ''}>C - Catcher</option>
+          <option value="1B" ${player.pos === '1B' ? 'selected' : ''}>1B - First Base</option>
+          <option value="2B" ${player.pos === '2B' ? 'selected' : ''}>2B - Second Base</option>
+          <option value="3B" ${player.pos === '3B' ? 'selected' : ''}>3B - Third Base</option>
+          <option value="SS" ${player.pos === 'SS' ? 'selected' : ''}>SS - Shortstop</option>
+          <option value="LF" ${player.pos === 'LF' ? 'selected' : ''}>LF - Left Field</option>
+          <option value="CF" ${player.pos === 'CF' ? 'selected' : ''}>CF - Center Field</option>
+          <option value="RF" ${player.pos === 'RF' ? 'selected' : ''}>RF - Right Field</option>
+          <option value="DH" ${player.pos === 'DH' ? 'selected' : ''}>DH - Desig. Hitter</option>
+          <option value="UT" ${player.pos === 'UT' ? 'selected' : ''}>UT - Utility</option>
+        </select>
+      </td>
+      <td class="p-2 text-center">
+        <button onclick="handleDeleteRosterPlayer('${player.name}')" class="text-slate-600 hover:text-rose-400 p-1" title="Delete Player">
+          🗑️
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function handleUpdateRoster(playerName, field, value) {
+  const selectEl = document.getElementById('opponentSelect');
+  const activeOpponent = selectEl ? selectEl.value : null;
+
+  if (activeOpponent) {
+    updateRosterPlayer(activeOpponent, playerName, { [field]: value });
+  }
+}
+
+function handleManualAddPlayer() {
+  const selectEl = document.getElementById('opponentSelect');
+  const activeOpponent = selectEl ? selectEl.value : null;
+
+  if (!activeOpponent) {
+    alert("Please select an opponent team first.");
+    return;
+  }
+
+  const name = prompt("Enter player full name:");
+  if (name && name.trim()) {
+    updateRosterPlayer(activeOpponent, name.trim(), { number: '', bats: 'R', throws: 'R', pos: 'UT' });
+    renderRosterTable();
+  }
+}
+
+function handleDeleteRosterPlayer(playerName) {
+  const selectEl = document.getElementById('opponentSelect');
+  const activeOpponent = selectEl ? selectEl.value : null;
+
+  if (activeOpponent && confirm(`Remove ${playerName} from roster?`)) {
+    deleteRosterPlayer(activeOpponent, playerName);
+    renderRosterTable();
+  }
+}
+
+// --- SAVE GAME LOG HANDLER ---
+
 function handleSaveGameLog() {
   const selectEl = document.getElementById('opponentSelect');
   const activeOpponent = selectEl ? selectEl.value : null;
@@ -110,18 +223,17 @@ function handleSaveGameLog() {
 
   saveGameLog(activeOpponent, metadata, rawText);
 
-  // Clear text area & notify user
   document.getElementById('pbpInput').value = '';
   document.getElementById('gameNotesInput').value = '';
   if (statusEl) {
-    statusEl.innerText = "✓ Game saved successfully!";
+    statusEl.innerText = "✓ Game saved & roster extracted!";
     setTimeout(() => { statusEl.innerText = ""; }, 3000);
   }
 
   renderGamesList();
+  renderRosterTable();
 }
 
-// Deletes a game log
 function handleDeleteGame(gameId) {
   const selectEl = document.getElementById('opponentSelect');
   const activeOpponent = selectEl ? selectEl.value : null;
@@ -132,7 +244,6 @@ function handleDeleteGame(gameId) {
   }
 }
 
-// Tab navigation handler
 function switchTab(tabName) {
   document.querySelectorAll('.tab-view').forEach(view => view.classList.add('hidden'));
   document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -144,21 +255,19 @@ function switchTab(tabName) {
   if (targetBtn) targetBtn.classList.add('active');
 }
 
-// Add new opponent
 function addOpponent() {
   const name = prompt("Enter new opponent team name:");
   if (name && name.trim()) {
     const trimmed = name.trim();
     const data = loadAppData();
     if (!data.opponents[trimmed]) {
-      data.opponents[trimmed] = { games: [] };
+      data.opponents[trimmed] = { games: [], roster: [] };
       saveAppData(data);
     }
     refreshOpponentDropdown(trimmed);
   }
 }
 
-// Rename active opponent
 function renameOpponent() {
   const selectEl = document.getElementById('opponentSelect');
   const current = selectEl ? selectEl.value : null;
@@ -169,7 +278,7 @@ function renameOpponent() {
     const trimmed = newName.trim();
     const data = loadAppData();
 
-    data.opponents[trimmed] = data.opponents[current] || { games: [] };
+    data.opponents[trimmed] = data.opponents[current] || { games: [], roster: [] };
     delete data.opponents[current];
     
     saveAppData(data);
