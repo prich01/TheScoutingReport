@@ -1,182 +1,318 @@
 /**
- * The Scouting Report - Main Controller (js/app.js)
- * Coordinates UI state, roster management, game uploads, and report rendering.
+ * The Scouting Report - Main Application Controller (js/app.js)
+ * Manages UI navigation, team selection, roster editing, game log management,
+ * spray chart SVG generation, and report rendering.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  refreshOpponentDropdown();
-  setDefaultGameDate();
-  renderGamesList();
-  renderRosterTable();
+  initOpponentDropdown();
+  switchTab('uploading');
 });
 
+// ==========================================
+// 1. NAVIGATION & TAB SWITCHING
+// ==========================================
+
 /**
- * Sets default date input to today's date (YYYY-MM-DD).
+ * Switches current active view tab and triggers view-specific renders.
+ * @param {string} tabId - Identifier for tab ('dashboard', 'uploading', 'opponent', 'self', 'downloads')
  */
-function setDefaultGameDate() {
-  const dateInput = document.getElementById('gameDateInput');
-  if (dateInput) {
-    dateInput.value = new Date().toISOString().split('T')[0];
+function switchTab(tabId) {
+  // Hide all views
+  document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
+  // Deactivate all nav buttons
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+
+  const targetView = document.getElementById(`view-${tabId}`);
+  const targetNav = document.getElementById(`nav-${tabId}`);
+
+  if (targetView) targetView.classList.remove('hidden');
+  if (targetNav) targetNav.classList.add('active');
+
+  // Trigger view updates
+  if (tabId === 'opponent') {
+    renderOpponentReport();
+  } else if (tabId === 'uploading') {
+    renderUploadingTab();
   }
 }
 
+// ==========================================
+// 2. OPPONENT TEAM MANAGEMENT
+// ==========================================
+
 /**
- * Populates the sidebar opponent selector dropdown.
+ * Initializes and populates the sidebar active opponent select dropdown.
  */
-function refreshOpponentDropdown(selectedName = null) {
+function initOpponentDropdown() {
   const selectEl = document.getElementById('opponentSelect');
   if (!selectEl) return;
 
-  const appData = loadAppData();
-  const opponentNames = Object.keys(appData.opponents);
-
+  const opponents = getOpponents(); // Loaded from storage.js
   selectEl.innerHTML = '';
-  opponentNames.forEach(name => {
+
+  if (opponents.length === 0) {
+    const defaultTeam = "Ridgeview High";
+    addOpponentToStorage(defaultTeam);
+    opponents.push(defaultTeam);
+  }
+
+  opponents.forEach(op => {
     const opt = document.createElement('option');
-    opt.value = name;
-    opt.innerText = name;
-    if (selectedName && name === selectedName) {
-      opt.selected = true;
-    }
+    opt.value = op;
+    opt.textContent = op;
     selectEl.appendChild(opt);
   });
 
-  renderGamesList();
-  renderRosterTable();
+  const active = getActiveOpponent();
+  if (active && opponents.includes(active)) {
+    selectEl.value = active;
+  } else {
+    selectEl.value = opponents[0];
+    setActiveOpponent(opponents[0]);
+  }
+
+  handleOpponentChange();
 }
 
 /**
- * Handler for active opponent dropdown change event.
+ * Handles dropdown change event when switching active opponents.
  */
 function handleOpponentChange() {
-  renderGamesList();
-  renderRosterTable();
+  const selectEl = document.getElementById('opponentSelect');
+  if (!selectEl) return;
 
-  // If currently on the opponent report view, re-render it
-  const opponentView = document.getElementById('view-opponent');
-  if (opponentView && !opponentView.classList.contains('hidden')) {
+  const selected = selectEl.value;
+  setActiveOpponent(selected);
+
+  // Update UI subheaders
+  const loadedGamesSub = document.getElementById('loadedGamesSubheader');
+  if (loadedGamesSub) loadedGamesSub.textContent = `For ${selected || 'Selected Team'}`;
+
+  const rosterSub = document.getElementById('rosterSubheader');
+  if (rosterSub) rosterSub.textContent = `Roster and handedness settings for ${selected || 'Selected Team'}.`;
+
+  renderUploadingTab();
+
+  // If opponent report view is visible, refresh it
+  const oppView = document.getElementById('view-opponent');
+  if (oppView && !oppView.classList.contains('hidden')) {
     renderOpponentReport();
   }
 }
 
 /**
- * Renders the list of saved games for the currently selected opponent.
+ * Prompts user to add a new opponent team.
  */
-function renderGamesList() {
+function addOpponent() {
+  const name = prompt("Enter new opponent team name:");
+  if (name && name.trim()) {
+    const cleanName = name.trim();
+    addOpponentToStorage(cleanName);
+    setActiveOpponent(cleanName);
+    initOpponentDropdown();
+  }
+}
+
+/**
+ * Prompts user to rename the currently active opponent team.
+ */
+function renameOpponent() {
   const selectEl = document.getElementById('opponentSelect');
+  if (!selectEl || !selectEl.value) return;
+
+  const currentName = selectEl.value;
+  const newName = prompt("Rename opponent team:", currentName);
+  if (newName && newName.trim() && newName.trim() !== currentName) {
+    const cleanName = newName.trim();
+    renameOpponentInStorage(currentName, cleanName);
+    setActiveOpponent(cleanName);
+    initOpponentDropdown();
+  }
+}
+
+// ==========================================
+// 3. UPLOADING TAB & ROSTER MANAGEMENT
+// ==========================================
+
+/**
+ * Renders loaded games list and roster table for active opponent.
+ */
+function renderUploadingTab() {
+  const activeOpponent = getActiveOpponent();
+  renderGamesList(activeOpponent);
+  renderRosterTable(activeOpponent);
+}
+
+/**
+ * Renders stored play-by-play logs for active opponent.
+ */
+function renderGamesList(opponentName) {
   const container = document.getElementById('gamesListContainer');
-  const subheader = document.getElementById('loadedGamesSubheader');
-  
-  if (!selectEl || !container) return;
+  if (!container) return;
 
-  const activeOpponent = selectEl.value;
-  if (subheader) subheader.innerText = `For ${activeOpponent || 'Selected Team'}`;
-
-  if (!activeOpponent) {
+  if (!opponentName) {
     container.innerHTML = `<p class="text-xs text-slate-500 italic">No opponent selected.</p>`;
     return;
   }
 
-  const games = getOpponentGames(activeOpponent);
-
+  const games = getOpponentGames(opponentName);
   if (games.length === 0) {
-    container.innerHTML = `<p class="text-xs text-slate-500 italic">No games saved for ${activeOpponent} yet.</p>`;
+    container.innerHTML = `<p class="text-xs text-slate-500 italic">No games saved for ${opponentName} yet.</p>`;
     return;
   }
 
   container.innerHTML = '';
-  games.forEach(game => {
-    const card = document.createElement('div');
-    card.className = "bg-slate-950 border border-slate-800 rounded p-3 text-xs flex justify-between items-center group hover:border-slate-700 transition";
-    card.innerHTML = `
-      <div>
-        <div class="font-bold text-slate-200">${game.notes}</div>
-        <div class="text-[10px] text-slate-500">${game.date} • ${(game.rawText.length / 1000).toFixed(1)}KB</div>
+  games.forEach((game) => {
+    const item = document.createElement('div');
+    item.className = "bg-slate-950 border border-slate-800 p-2.5 rounded-lg flex justify-between items-center text-xs";
+    item.innerHTML = `
+      <div class="truncate mr-2">
+        <div class="font-bold text-slate-200 truncate">${game.notes || 'Game Log'}</div>
+        <div class="text-[10px] text-slate-500">${game.date || 'Undated'}</div>
       </div>
-      <button onclick="handleDeleteGame('${game.id}')" class="text-slate-600 hover:text-rose-400 p-1 opacity-0 group-hover:opacity-100 transition" title="Delete Game">
-        🗑️
-      </button>
+      <button onclick="handleDeleteGame('${game.id}')" class="text-rose-400 hover:text-rose-300 text-[10px] px-2 py-1 rounded bg-rose-950/40 border border-rose-900/50 shrink-0">Delete</button>
     `;
-    container.appendChild(card);
+    container.appendChild(item);
   });
 }
 
-// --- ROSTER UI RENDERER & HANDLERS ---
-
 /**
- * Renders the editable roster table for the active opponent.
+ * Saves input game log and auto-extracts roster entries.
  */
-function renderRosterTable() {
-  const selectEl = document.getElementById('opponentSelect');
-  const tbody = document.getElementById('rosterTableBody');
-  const subheader = document.getElementById('rosterSubheader');
-
-  if (!selectEl || !tbody) return;
-
-  const activeOpponent = selectEl.value;
-  if (subheader) subheader.innerText = `Roster details for ${activeOpponent || 'Selected Team'}. Auto-saves on edit.`;
-
+function handleSaveGameLog() {
+  const activeOpponent = getActiveOpponent();
   if (!activeOpponent) {
-    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">No opponent selected.</td></tr>`;
+    alert("Please select or add an opponent team first.");
     return;
   }
 
-  const roster = getOpponentRoster(activeOpponent);
+  const dateVal = document.getElementById('gameDateInput').value;
+  const notesVal = document.getElementById('gameNotesInput').value;
+  const rawText = document.getElementById('pbpInput').value;
+  const statusEl = document.getElementById('uploadStatus');
 
+  if (!rawText || !rawText.trim()) {
+    if (statusEl) statusEl.textContent = "⚠️ Please paste play-by-play log text first.";
+    return;
+  }
+
+  const gameObj = {
+    id: Date.now().toString(),
+    date: dateVal || new Date().toISOString().split('T')[0],
+    notes: notesVal || 'Game Log',
+    rawText: rawText.trim()
+  };
+
+  saveGameLog(activeOpponent, gameObj);
+
+  // Auto-extract players and merge into saved roster
+  const currentRoster = getOpponentRoster(activeOpponent);
+  const parsed = parseGameLog(rawText, currentRoster);
+
+  const rosterMap = {};
+  currentRoster.forEach(p => { rosterMap[p.name.toLowerCase()] = p; });
+
+  // Merge extracted hitters
+  Object.values(parsed.hitters).forEach(h => {
+    if (!rosterMap[h.name.toLowerCase()]) {
+      currentRoster.push({
+        name: h.name,
+        number: h.number !== '--' ? h.number : '00',
+        bats: h.bats || 'R',
+        throws: h.throws || 'R',
+        pos: h.pos || 'UT'
+      });
+      rosterMap[h.name.toLowerCase()] = true;
+    }
+  });
+
+  // Merge extracted pitchers
+  Object.values(parsed.pitchers).forEach(p => {
+    if (!rosterMap[p.name.toLowerCase()]) {
+      currentRoster.push({
+        name: p.name,
+        number: p.number !== '--' ? p.number : '00',
+        bats: 'R',
+        throws: p.throws || 'R',
+        pos: 'P'
+      });
+      rosterMap[p.name.toLowerCase()] = true;
+    }
+  });
+
+  saveOpponentRoster(activeOpponent, currentRoster);
+
+  // Reset form
+  document.getElementById('pbpInput').value = '';
+  document.getElementById('gameNotesInput').value = '';
+  
+  if (statusEl) {
+    statusEl.textContent = "✅ Game log saved & roster updated!";
+    setTimeout(() => { statusEl.textContent = ""; }, 3500);
+  }
+
+  renderUploadingTab();
+}
+
+/**
+ * Removes a saved game log by ID.
+ */
+function handleDeleteGame(gameId) {
+  const activeOpponent = getActiveOpponent();
+  if (confirm("Are you sure you want to delete this game log?")) {
+    deleteGameLog(activeOpponent, gameId);
+    renderUploadingTab();
+  }
+}
+
+/**
+ * Renders opponent roster table for inline editing.
+ */
+function renderRosterTable(opponentName) {
+  const tbody = document.getElementById('rosterTableBody');
+  if (!tbody) return;
+
+  if (!opponentName) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500 italic">No opponent selected.</td></tr>`;
+    return;
+  }
+
+  const roster = getOpponentRoster(opponentName);
   if (roster.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">No roster players found. Upload a game log above or click "+ Add Player".</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500 italic">No roster entries found. Save a game log to auto-extract or add players manually.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = '';
-  roster.forEach(player => {
+  roster.forEach((player, idx) => {
     const tr = document.createElement('tr');
-    tr.className = "hover:bg-slate-950/50 transition";
-
+    tr.className = "hover:bg-slate-950/50";
     tr.innerHTML = `
       <td class="p-2">
-        <input type="text" value="${player.number || ''}" placeholder="#" 
-               onchange="handleUpdateRoster('${player.name}', 'number', this.value)"
-               class="w-12 bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs text-center font-bold text-emerald-400 focus:outline-none focus:border-emerald-500">
-      </td>
-      <td class="p-2 font-semibold text-slate-200">
-        ${player.name}
+        <input type="text" value="${player.number || ''}" onchange="updateRosterPlayer(${idx}, 'number', this.value)" class="w-12 bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-center text-xs text-slate-200">
       </td>
       <td class="p-2">
-        <select onchange="handleUpdateRoster('${player.name}', 'bats', this.value)" 
-                class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs font-semibold focus:outline-none focus:border-emerald-500">
-          <option value="R" ${player.bats === 'R' ? 'selected' : ''}>Right (R)</option>
-          <option value="L" ${player.bats === 'L' ? 'selected' : ''}>Left (L)</option>
-          <option value="S" ${player.bats === 'S' ? 'selected' : ''}>Switch (S)</option>
+        <input type="text" value="${player.name || ''}" onchange="updateRosterPlayer(${idx}, 'name', this.value)" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-semibold">
+      </td>
+      <td class="p-2">
+        <select onchange="updateRosterPlayer(${idx}, 'bats', this.value)" class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs text-slate-300">
+          <option value="R" ${player.bats === 'R' ? 'selected' : ''}>R</option>
+          <option value="L" ${player.bats === 'L' ? 'selected' : ''}>L</option>
+          <option value="S" ${player.bats === 'S' ? 'selected' : ''}>S</option>
         </select>
       </td>
       <td class="p-2">
-        <select onchange="handleUpdateRoster('${player.name}', 'throws', this.value)" 
-                class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs font-semibold focus:outline-none focus:border-emerald-500">
-          <option value="R" ${player.throws === 'R' ? 'selected' : ''}>Right (R)</option>
-          <option value="L" ${player.throws === 'L' ? 'selected' : ''}>Left (L)</option>
+        <select onchange="updateRosterPlayer(${idx}, 'throws', this.value)" class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs text-slate-300">
+          <option value="R" ${player.throws === 'R' ? 'selected' : ''}>R</option>
+          <option value="L" ${player.throws === 'L' ? 'selected' : ''}>L</option>
         </select>
       </td>
       <td class="p-2">
-        <select onchange="handleUpdateRoster('${player.name}', 'pos', this.value)" 
-                class="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs focus:outline-none focus:border-emerald-500">
-          <option value="P" ${player.pos === 'P' ? 'selected' : ''}>P - Pitcher</option>
-          <option value="C" ${player.pos === 'C' ? 'selected' : ''}>C - Catcher</option>
-          <option value="1B" ${player.pos === '1B' ? 'selected' : ''}>1B - First Base</option>
-          <option value="2B" ${player.pos === '2B' ? 'selected' : ''}>2B - Second Base</option>
-          <option value="3B" ${player.pos === '3B' ? 'selected' : ''}>3B - Third Base</option>
-          <option value="SS" ${player.pos === 'SS' ? 'selected' : ''}>SS - Shortstop</option>
-          <option value="LF" ${player.pos === 'LF' ? 'selected' : ''}>LF - Left Field</option>
-          <option value="CF" ${player.pos === 'CF' ? 'selected' : ''}>CF - Center Field</option>
-          <option value="RF" ${player.pos === 'RF' ? 'selected' : ''}>RF - Right Field</option>
-          <option value="DH" ${player.pos === 'DH' ? 'selected' : ''}>DH - Desig. Hitter</option>
-          <option value="UT" ${player.pos === 'UT' ? 'selected' : ''}>UT - Utility</option>
-        </select>
+        <input type="text" value="${player.pos || ''}" onchange="updateRosterPlayer(${idx}, 'pos', this.value)" class="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200">
       </td>
       <td class="p-2 text-center">
-        <button onclick="handleDeleteRosterPlayer('${player.name}')" class="text-slate-600 hover:text-rose-400 p-1" title="Delete Player">
-          🗑️
-        </button>
+        <button onclick="removeRosterPlayer(${idx})" class="text-rose-400 hover:text-rose-300 font-bold px-1.5 py-0.5">✕</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -184,120 +320,140 @@ function renderRosterTable() {
 }
 
 /**
- * Updates a specific player's roster details upon inline input edit.
+ * Updates individual roster field and saves to localStorage.
  */
-function handleUpdateRoster(playerName, field, value) {
-  const selectEl = document.getElementById('opponentSelect');
-  const activeOpponent = selectEl ? selectEl.value : null;
-
-  if (activeOpponent) {
-    updateRosterPlayer(activeOpponent, playerName, { [field]: value });
+function updateRosterPlayer(idx, field, value) {
+  const activeOpponent = getActiveOpponent();
+  const roster = getOpponentRoster(activeOpponent);
+  if (roster[idx]) {
+    roster[idx][field] = value;
+    saveOpponentRoster(activeOpponent, roster);
   }
 }
 
 /**
- * Prompts user to manually add a player to the current opponent's roster.
+ * Removes player entry from active opponent roster.
+ */
+function removeRosterPlayer(idx) {
+  const activeOpponent = getActiveOpponent();
+  const roster = getOpponentRoster(activeOpponent);
+  roster.splice(idx, 1);
+  saveOpponentRoster(activeOpponent, roster);
+  renderRosterTable(activeOpponent);
+}
+
+/**
+ * Adds a new blank player row to the active roster.
  */
 function handleManualAddPlayer() {
-  const selectEl = document.getElementById('opponentSelect');
-  const activeOpponent = selectEl ? selectEl.value : null;
-
-  if (!activeOpponent) {
-    alert("Please select an opponent team first.");
-    return;
-  }
-
-  const name = prompt("Enter player full name:");
-  if (name && name.trim()) {
-    updateRosterPlayer(activeOpponent, name.trim(), { number: '', bats: 'R', throws: 'R', pos: 'UT' });
-    renderRosterTable();
-  }
+  const activeOpponent = getActiveOpponent();
+  if (!activeOpponent) return;
+  const roster = getOpponentRoster(activeOpponent);
+  roster.push({
+    name: 'New Player',
+    number: '00',
+    bats: 'R',
+    throws: 'R',
+    pos: 'UT'
+  });
+  saveOpponentRoster(activeOpponent, roster);
+  renderRosterTable(activeOpponent);
 }
 
-/**
- * Prompts user and deletes a player from the active roster.
- */
-function handleDeleteRosterPlayer(playerName) {
-  const selectEl = document.getElementById('opponentSelect');
-  const activeOpponent = selectEl ? selectEl.value : null;
-
-  if (activeOpponent && confirm(`Remove ${playerName} from roster?`)) {
-    deleteRosterPlayer(activeOpponent, playerName);
-    renderRosterTable();
-  }
-}
-
-// --- SAVE GAME LOG HANDLER ---
+// ==========================================
+// 4. SPRAY CHART GENERATOR
+// ==========================================
 
 /**
- * Saves a new GameChanger log to local storage and auto-extracts roster names.
+ * Generates interactive SVG baseball field spray chart with hit/out dots.
+ * @param {Array} sprayList - Array of spray events [{ location, result, type }]
+ * @returns {string} SVG String
  */
-function handleSaveGameLog() {
-  const selectEl = document.getElementById('opponentSelect');
-  const activeOpponent = selectEl ? selectEl.value : null;
-  const rawText = document.getElementById('pbpInput').value;
-  const dateVal = document.getElementById('gameDateInput').value;
-  const notesVal = document.getElementById('gameNotesInput').value;
-  const statusEl = document.getElementById('uploadStatus');
-
-  if (!activeOpponent) {
-    alert("Please select or add an opponent team first.");
-    return;
-  }
-
-  if (!rawText.trim()) {
-    alert("Please paste GameChanger play-by-play text before saving.");
-    return;
-  }
-
-  const metadata = {
-    date: dateVal,
-    notes: notesVal.trim() || `Game on ${dateVal}`
+function generateSprayChartSvg(sprayList = []) {
+  const locationCoordinates = {
+    'left field': { x: 35, y: 30 },
+    'left-center': { x: 60, y: 25 },
+    'center field': { x: 100, y: 20 },
+    'right-center': { x: 140, y: 25 },
+    'right field': { x: 165, y: 30 },
+    'third base': { x: 65, y: 75 },
+    'shortstop': { x: 80, y: 60 },
+    'second base': { x: 120, y: 60 },
+    'first base': { x: 135, y: 75 },
+    'pitcher': { x: 100, y: 80 },
+    'catcher': { x: 100, y: 110 },
+    'shallow left': { x: 50, y: 50 },
+    'shallow right': { x: 150, y: 50 },
+    'deep center': { x: 100, y: 12 }
   };
 
-  saveGameLog(activeOpponent, metadata, rawText);
+  let dotsSvg = '';
+  sprayList.forEach(item => {
+    const locKey = item.location ? item.location.toLowerCase() : 'center field';
+    let coords = locationCoordinates[locKey];
 
-  document.getElementById('pbpInput').value = '';
-  document.getElementById('gameNotesInput').value = '';
-  if (statusEl) {
-    statusEl.innerText = "✓ Game saved & roster extracted!";
-    setTimeout(() => { statusEl.innerText = ""; }, 3000);
-  }
+    if (!coords) {
+      if (locKey.includes('left')) coords = locationCoordinates['left field'];
+      else if (locKey.includes('right')) coords = locationCoordinates['right field'];
+      else if (locKey.includes('short') || locKey.includes('ss')) coords = locationCoordinates['shortstop'];
+      else if (locKey.includes('second') || locKey.includes('2b')) coords = locationCoordinates['second base'];
+      else if (locKey.includes('third') || locKey.includes('3b')) coords = locationCoordinates['third base'];
+      else if (locKey.includes('first') || locKey.includes('1b')) coords = locationCoordinates['first base'];
+      else coords = locationCoordinates['center field'];
+    }
 
-  renderGamesList();
-  renderRosterTable();
+    // Organic plot jitter
+    const offsetX = (Math.random() - 0.5) * 14;
+    const offsetY = (Math.random() - 0.5) * 14;
+    const cx = Math.max(15, Math.min(185, coords.x + offsetX));
+    const cy = Math.max(15, Math.min(115, coords.y + offsetY));
+
+    const isHit = item.result === 'hit';
+    const color = isHit ? '#34d399' : '#f87171'; // emerald-400 : rose-400
+
+    dotsSvg += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color}" opacity="0.85" stroke="#0f172a" stroke-width="0.75"><title>${item.type} to ${item.location || 'field'}</title></circle>`;
+  });
+
+  return `
+    <svg viewBox="0 0 200 130" class="w-full max-w-[200px] h-auto drop-shadow">
+      <!-- Outfield Grass Arc -->
+      <path d="M 20 100 Q 100 -20 180 100 L 100 115 Z" fill="#022c22" stroke="#059669" stroke-width="1.5" />
+      <!-- Infield Dirt Diamond -->
+      <polygon points="100,110 65,80 100,50 135,80" fill="#1e1b18" stroke="#d97706" stroke-width="1" />
+      <!-- Pitcher's Mound -->
+      <circle cx="100" cy="80" r="4" fill="#d97706" />
+      <!-- Home Plate -->
+      <polygon points="100,110 96,113 96,116 104,116 104,113" fill="#ffffff" />
+      <!-- Foul Lines -->
+      <line x1="100" y1="110" x2="20" y2="100" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2,2" />
+      <line x1="100" y1="110" x2="180" y2="100" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2,2" />
+      <!-- Extracted Hit & Out Spray Dots -->
+      ${dotsSvg}
+    </svg>
+  `;
 }
 
-/**
- * Deletes a game log.
- */
-function handleDeleteGame(gameId) {
-  const selectEl = document.getElementById('opponentSelect');
-  const activeOpponent = selectEl ? selectEl.value : null;
-
-  if (activeOpponent && confirm("Are you sure you want to delete this game log?")) {
-    deleteGameLog(activeOpponent, gameId);
-    renderGamesList();
-  }
-}
-
-// --- OPPONENT SCOUTING REPORT RENDERER ---
+// ==========================================
+// 5. OPPONENT SCOUTING REPORT RENDERER
+// ==========================================
 
 /**
- * Aggregates all game logs for the active opponent and renders hitter cards with spray charts.
+ * Aggregates all game logs for active opponent and renders Pitcher and Hitter cards.
  */
 function renderOpponentReport() {
   const selectEl = document.getElementById('opponentSelect');
-  const container = document.getElementById('hitterCardsContainer');
+  const hitterContainer = document.getElementById('hitterCardsContainer');
+  const pitcherContainer = document.getElementById('pitcherCardsContainer');
   const subheader = document.getElementById('opponentReportSubheader');
 
-  if (!selectEl || !container) return;
+  if (!selectEl || !hitterContainer || !pitcherContainer) return;
 
   const activeOpponent = selectEl.value;
   if (subheader) subheader.innerText = `Aggregated scouting data for ${activeOpponent || 'Selected Team'}.`;
 
   if (!activeOpponent) {
-    container.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">No active opponent selected.</p>`;
+    hitterContainer.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">No active opponent selected.</p>`;
+    pitcherContainer.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">No active opponent selected.</p>`;
     return;
   }
 
@@ -305,15 +461,20 @@ function renderOpponentReport() {
   const roster = getOpponentRoster(activeOpponent);
 
   if (games.length === 0) {
-    container.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">No saved games found for ${activeOpponent}. Upload game logs in the Uploading tab to generate reports.</p>`;
+    const emptyMsg = `<p class="text-xs text-slate-500 italic col-span-full">No saved games found for ${activeOpponent}. Upload logs in the Uploading tab.</p>`;
+    hitterContainer.innerHTML = emptyMsg;
+    pitcherContainer.innerHTML = emptyMsg;
     return;
   }
 
-  // Aggregate stats across all saved games
+  // Aggregation containers
   const aggregatedHitters = {};
+  const aggregatedPitchers = {};
 
   games.forEach(game => {
     const parsed = parseGameLog(game.rawText, roster);
+
+    // Aggregate Hitters
     Object.values(parsed.hitters).forEach(hitter => {
       if (!aggregatedHitters[hitter.name]) {
         aggregatedHitters[hitter.name] = { ...hitter, spray: [...hitter.spray] };
@@ -332,9 +493,81 @@ function renderOpponentReport() {
         agg.spray = agg.spray.concat(hitter.spray);
       }
     });
+
+    // Aggregate Pitchers
+    Object.values(parsed.pitchers).forEach(pitcher => {
+      if (!aggregatedPitchers[pitcher.name]) {
+        aggregatedPitchers[pitcher.name] = { ...pitcher };
+      } else {
+        const agg = aggregatedPitchers[pitcher.name];
+        agg.outs += pitcher.outs;
+        agg.bf += pitcher.bf;
+        agg.h += pitcher.h;
+        agg.bb += pitcher.bb;
+        agg.so += pitcher.so;
+        agg.hr += pitcher.hr;
+      }
+    });
   });
 
-  // Re-calculate percentages post-aggregation
+  // --- RENDER PITCHERS ---
+  const pitcherList = Object.values(aggregatedPitchers);
+  if (pitcherList.length === 0) {
+    pitcherContainer.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">No pitcher substitutions detected in logs (Tip: GC logs usually include "takes the mound" or "Pitching Change").</p>`;
+  } else {
+    pitcherContainer.innerHTML = '';
+    pitcherList.forEach(p => {
+      const fullInnings = Math.floor(p.outs / 3);
+      const remOuts = p.outs % 3;
+      const ipDisplay = `${fullInnings}.${remOuts}`;
+      const ipDecimal = p.outs / 3;
+      const whip = ipDecimal > 0 ? ((p.h + p.bb) / ipDecimal).toFixed(2) : '0.00';
+      const kBbRatio = p.bb > 0 ? (p.so / p.bb).toFixed(1) : p.so.toFixed(1);
+
+      const card = document.createElement('div');
+      card.className = "bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow-xl flex flex-col justify-between";
+      card.innerHTML = `
+        <div>
+          <div class="flex justify-between items-start border-b border-slate-800 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-amber-400 bg-amber-950/80 border border-amber-800/60 px-2 py-0.5 rounded">#${p.number}</span>
+                <h3 class="text-base font-bold text-white">${p.name}</h3>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1">Role: <span class="text-slate-200 font-semibold">Pitcher</span> | Throws: <span class="text-slate-200 font-semibold">${p.throws}</span></p>
+            </div>
+          </div>
+
+          <!-- Key Pitcher Metrics -->
+          <div class="grid grid-cols-3 gap-2 text-center my-3 py-2 bg-slate-950/80 rounded-lg border border-slate-800/80">
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold">IP</div>
+              <div class="text-sm font-extrabold text-amber-400">${ipDisplay}</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold">WHIP</div>
+              <div class="text-sm font-extrabold text-slate-200">${whip}</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold">K / BB</div>
+              <div class="text-sm font-extrabold text-slate-200">${kBbRatio}</div>
+            </div>
+          </div>
+
+          <!-- Pitching Line Breakdown -->
+          <div class="text-[11px] text-slate-400 space-y-1">
+            <div class="flex justify-between"><span>Batters Faced (BF):</span> <span class="font-bold text-slate-200">${p.bf}</span></div>
+            <div class="flex justify-between"><span>Strikeouts (K):</span> <span class="font-bold text-emerald-400">${p.so}</span></div>
+            <div class="flex justify-between"><span>Walks Allowed (BB):</span> <span class="font-bold text-rose-400">${p.bb}</span></div>
+            <div class="flex justify-between"><span>Hits Allowed (H):</span> <span class="font-bold text-slate-200">${p.h} (${p.hr} HR)</span></div>
+          </div>
+        </div>
+      `;
+      pitcherContainer.appendChild(card);
+    });
+  }
+
+  // --- RENDER HITTERS ---
   Object.values(aggregatedHitters).forEach(h => {
     h.avg = h.ab > 0 ? (h.hits / h.ab).toFixed(3).replace(/^0/, '') : '.000';
     h.obp = h.pa > 0 ? ((h.hits + h.bb + h.hbp) / h.pa).toFixed(3).replace(/^0/, '') : '.000';
@@ -342,171 +575,60 @@ function renderOpponentReport() {
   });
 
   const hitterList = Object.values(aggregatedHitters);
-
   if (hitterList.length === 0) {
-    container.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">Could not extract player stats from current logs.</p>`;
-    return;
-  }
+    hitterContainer.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">Could not extract hitter stats from current logs.</p>`;
+  } else {
+    hitterContainer.innerHTML = '';
+    hitterList.forEach(hitter => {
+      const card = document.createElement('div');
+      card.className = "bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow-xl flex flex-col justify-between";
+      const spraySvg = generateSprayChartSvg(hitter.spray);
 
-  container.innerHTML = '';
-  hitterList.forEach(hitter => {
-    const card = document.createElement('div');
-    card.className = "bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow-xl flex flex-col justify-between";
-
-    // Generate SVG spray chart points
-    const spraySvg = generateSprayChartSvg(hitter.spray);
-
-    card.innerHTML = `
-      <div>
-        <!-- Header: Name, Number & Handedness -->
-        <div class="flex justify-between items-start border-b border-slate-800 pb-3">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-2 py-0.5 rounded">#${hitter.number}</span>
-              <h3 class="text-base font-bold text-white">${hitter.name}</h3>
+      card.innerHTML = `
+        <div>
+          <div class="flex justify-between items-start border-b border-slate-800 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-2 py-0.5 rounded">#${hitter.number}</span>
+                <h3 class="text-base font-bold text-white">${hitter.name}</h3>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1">Pos: <span class="text-slate-200 font-semibold">${hitter.pos}</span> | Bats: <span class="text-slate-200 font-semibold">${hitter.bats}</span> | Throws: <span class="text-slate-200 font-semibold">${hitter.throws}</span></p>
             </div>
-            <p class="text-[11px] text-slate-400 mt-1">Pos: <span class="text-slate-200 font-semibold">${hitter.pos}</span> | Bats: <span class="text-slate-200 font-semibold">${hitter.bats}</span> | Throws: <span class="text-slate-200 font-semibold">${hitter.throws}</span></p>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center my-3 py-2 bg-slate-950/80 rounded-lg border border-slate-800/80">
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold">AVG</div>
+              <div class="text-sm font-extrabold text-emerald-400">${hitter.avg}</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold">OBP</div>
+              <div class="text-sm font-extrabold text-slate-200">${hitter.obp}</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold">SLG</div>
+              <div class="text-sm font-extrabold text-slate-200">${hitter.slg}</div>
+            </div>
+          </div>
+
+          <div class="text-[11px] text-slate-400 space-y-1">
+            <div class="flex justify-between"><span>Plate Appearances:</span> <span class="font-bold text-slate-200">${hitter.pa}</span></div>
+            <div class="flex justify-between"><span>Hits (1B/2B/3B/HR):</span> <span class="font-bold text-slate-200">${hitter.hits} (${hitter.singles}/${hitter.doubles}/${hitter.triples}/${hitter.hr})</span></div>
+            <div class="flex justify-between"><span>BB / SO:</span> <span class="font-bold text-slate-200">${hitter.bb} / ${hitter.so}</span></div>
           </div>
         </div>
 
-        <!-- Slash Line Stats -->
-        <div class="grid grid-cols-3 gap-2 text-center my-3 py-2 bg-slate-950/80 rounded-lg border border-slate-800/80">
-          <div>
-            <div class="text-[10px] text-slate-500 uppercase font-bold">AVG</div>
-            <div class="text-sm font-extrabold text-emerald-400">${hitter.avg}</div>
+        <div class="pt-2">
+          <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex justify-between">
+            <span>Spray Chart</span>
+            <span class="text-[9px] text-slate-500"><span class="text-emerald-400">●</span> Hit  <span class="text-rose-400">●</span> Out</span>
           </div>
-          <div>
-            <div class="text-[10px] text-slate-500 uppercase font-bold">OBP</div>
-            <div class="text-sm font-extrabold text-slate-200">${hitter.obp}</div>
-          </div>
-          <div>
-            <div class="text-[10px] text-slate-500 uppercase font-bold">SLG</div>
-            <div class="text-sm font-extrabold text-slate-200">${hitter.slg}</div>
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-2 flex justify-center">
+            ${spraySvg}
           </div>
         </div>
-
-        <!-- Counting Stats Breakdown -->
-        <div class="text-[11px] text-slate-400 space-y-1">
-          <div class="flex justify-between"><span>Plate Appearances:</span> <span class="font-bold text-slate-200">${hitter.pa}</span></div>
-          <div class="flex justify-between"><span>Hits (1B/2B/3B/HR):</span> <span class="font-bold text-slate-200">${hitter.hits} (${hitter.singles}/${hitter.doubles}/${hitter.triples}/${hitter.hr})</span></div>
-          <div class="flex justify-between"><span>BB / SO:</span> <span class="font-bold text-slate-200">${hitter.bb} / ${hitter.so}</span></div>
-        </div>
-      </div>
-
-      <!-- Spray Chart Visual -->
-      <div class="pt-2">
-        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex justify-between">
-          <span>Spray Chart</span>
-          <span class="text-[9px] text-slate-500"><span class="text-emerald-400">●</span> Hit  <span class="text-rose-400">●</span> Out</span>
-        </div>
-        <div class="bg-slate-950 border border-slate-800 rounded-lg p-2 flex justify-center">
-          ${spraySvg}
-        </div>
-      </div>
-    `;
-
-    container.appendChild(card);
-  });
-}
-
-/**
- * Generates an SVG Field Diagram with plotted hit/out locations.
- */
-function generateSprayChartSvg(sprayEvents) {
-  let dotsSvg = '';
-
-  sprayEvents.forEach(evt => {
-    const loc = (evt.location || '').toLowerCase();
-    let x = 75;
-    let y = 60; // Default center field
-
-    // Map common field location names to SVG coordinates
-    if (loc.includes('left field') || loc.includes('lf')) { x = 35; y = 40; }
-    else if (loc.includes('center field') || loc.includes('cf')) { x = 75; y = 25; }
-    else if (loc.includes('right field') || loc.includes('rf')) { x = 115; y = 40; }
-    else if (loc.includes('shortstop') || loc.includes('ss')) { x = 55; y = 75; }
-    else if (loc.includes('second base') || loc.includes('2b')) { x = 95; y = 75; }
-    else if (loc.includes('third base') || loc.includes('3b')) { x = 40; y = 95; }
-    else if (loc.includes('first base') || loc.includes('1b')) { x = 110; y = 95; }
-    else if (loc.includes('pitcher') || loc.includes('p')) { x = 75; y = 90; }
-
-    // Add small random jitter so overlapping hits don't stack perfectly on top of each other
-    x += (Math.random() * 8 - 4);
-    y += (Math.random() * 8 - 4);
-
-    const color = evt.result === 'hit' ? '#34d399' : '#f87171'; // Green for hit, Red for out
-    dotsSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${color}" opacity="0.85" stroke="#0f172a" stroke-width="0.5" />`;
-  });
-
-  return `
-    <svg width="150" height="130" viewBox="0 0 150 130" class="overflow-visible">
-      <!-- Outfield Fence Arc -->
-      <path d="M 15 80 Q 75 -5 135 80" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="2 2" />
-      <!-- Foul Lines & Infield Diamond -->
-      <path d="M 75 120 L 15 80 L 75 40 L 135 80 Z" fill="#0f172a" stroke="#334155" stroke-width="1" />
-      <path d="M 75 120 L 75 95 L 55 75 L 75 55 L 95 75 Z" fill="#1e293b" stroke="#475569" stroke-width="1" />
-      <!-- Home Plate Marker -->
-      <polygon points="75,122 72,118 78,118" fill="#e2e8f0" />
-      <!-- Plotted Spray Dots -->
-      ${dotsSvg}
-    </svg>
-  `;
-}
-
-// --- GENERAL NAVIGATION & OPPONENT MANAGEMENT ---
-
-/**
- * Switches between main views/tabs in the application.
- */
-function switchTab(tabName) {
-  document.querySelectorAll('.tab-view').forEach(view => view.classList.add('hidden'));
-  document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-
-  const targetView = document.getElementById(`view-${tabName}`);
-  if (targetView) targetView.classList.remove('hidden');
-
-  const targetBtn = document.getElementById(`nav-${tabName}`);
-  if (targetBtn) targetBtn.classList.add('active');
-
-  // Trigger auto-render when switching to Opponent Reports
-  if (tabName === 'opponent') {
-    renderOpponentReport();
-  }
-}
-
-/**
- * Adds a new opponent team name.
- */
-function addOpponent() {
-  const name = prompt("Enter new opponent team name:");
-  if (name && name.trim()) {
-    const trimmed = name.trim();
-    const data = loadAppData();
-    if (!data.opponents[trimmed]) {
-      data.opponents[trimmed] = { games: [], roster: [] };
-      saveAppData(data);
-    }
-    refreshOpponentDropdown(trimmed);
-  }
-}
-
-/**
- * Renames the active opponent team.
- */
-function renameOpponent() {
-  const selectEl = document.getElementById('opponentSelect');
-  const current = selectEl ? selectEl.value : null;
-  if (!current) return;
-
-  const newName = prompt("Rename opponent team:", current);
-  if (newName && newName.trim() && newName.trim() !== current) {
-    const trimmed = newName.trim();
-    const data = loadAppData();
-
-    data.opponents[trimmed] = data.opponents[current] || { games: [], roster: [] };
-    delete data.opponents[current];
-    
-    saveAppData(data);
-    refreshOpponentDropdown(trimmed);
+      `;
+      hitterContainer.appendChild(card);
+    });
   }
 }
