@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Scouting Report</title>
+  <!-- Tailwind CSS CDN for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Custom CSS for tab navigation button states -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col gap-6 shrink-0 h-screen sticky top-0">
+    
+    <!-- App Branding & Team Title -->
+    <div>
+      <h1 class="text-xl font-black text-emerald-400 tracking-wider">THE SCOUTING REPORT</h1>
+      <p id="myTeamDisplay" class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Team Command Center</p>
+    </div>
+
+    <!-- Opponent Selector Module -->
+    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
+      <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Opponent</label>
+      <select id="opponentSelect" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
+        <option value="Ridgeview High">Ridgeview High</option>
+        <option value="Oak Creek">Oak Creek</option>
+      </select>
+      <div class="flex gap-1.5 pt-1">
+        <button onclick="addOpponent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1 rounded border border-slate-700 font-semibold">+ Add</button>
+        <button onclick="renameOpponent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1 rounded border border-slate-700 font-semibold">✏️ Rename</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="space-y-1 flex-1">
+      <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn active">
+        📊 Dashboard
+      </button>
+      <button onclick="switchTab('uploading')" id="nav-uploading" class="nav-btn">
+        📥 Uploading
+      </button>
+      <button onclick="switchTab('opponent')" id="nav-opponent" class="nav-btn">
+        🎯 Opponent Reports
+      </button>
+      <button onclick="switchTab('self')" id="nav-self" class="nav-btn">
+        🛡️ Self Reports
+      </button>
+      <button onclick="switchTab('downloads')" id="nav-downloads" class="nav-btn">
+        🖨️ Downloads
+      </button>
+    </nav>
+
+    <div class="text-[10px] text-slate-600 text-center">The Scouting Report v1.0</div>
+  </aside>
+
+  <!-- MAIN CONTENT AREA -->
+  <main class="flex-1 p-8 overflow-y-auto">
+    
+    <!-- View 1: Dashboard -->
+    <section id="view-dashboard" class="tab-view space-y-6">
+      <h2 class="text-2xl font-bold">Dashboard</h2>
+      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
+        <p class="text-sm text-slate-400">Pre-game cheat sheet and quick stats will render here.</p>
+      </div>
+    </section>
+
+    <!-- View 2: Uploading -->
+    <section id="view-uploading" class="tab-view hidden space-y-6">
+      <h2 class="text-2xl font-bold">Upload GameChanger Logs</h2>
+      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
+        <p class="text-sm text-slate-400">Paste GameChanger Play-by-Play text here.</p>
+      </div>
+    </section>
+
+    <!-- View 3: Opponent Reports -->
+    <section id="view-opponent" class="tab-view hidden space-y-6">
+      <h2 class="text-2xl font-bold">Opponent Scouting Reports</h2>
+      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
+        <p class="text-sm text-slate-400">Spray charts, hitting tendencies, and pitcher command reports.</p>
+      </div>
+    </section>
+
+    <!-- View 4: Self Reports -->
+    <section id="view-self" class="tab-view hidden space-y-6">
+      <h2 class="text-2xl font-bold">Self Reports & Player Development</h2>
+      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
+        <p class="text-sm text-slate-400">QAB%, team benchmarks, and progress charts.</p>
+      </div>
+    </section>
+
+    <!-- View 5: Downloads -->
+    <section id="view-downloads" class="tab-view hidden space-y-6">
+      <h2 class="text-2xl font-bold">Print & Export Center</h2>
+      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
+        <p class="text-sm text-slate-400">One-click dugout printables and individual player card exports.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- App Controller Script -->
+  <script src="js/app.js"></script>
+</body>
+</html>
