@@ -1,6 +1,6 @@
 /**
  * The Scouting Report - GameChanger Play-by-Play Parser (js/parser.js)
- * Parses raw GameChanger text logs into structured stats and spray chart data.
+ * Parses raw GameChanger text logs into structured hitter and pitcher stats.
  */
 
 /**
@@ -26,23 +26,22 @@ function parseGameLog(rawText, roster = []) {
   const outRegex = /(grounded out|flied out|lined out|popped out)\s+(?:to|into)\s+([a-z\s]+)/i;
   const strikeoutRegex = /(struck out looking|struck out swinging|struck out)/i;
   const walkRegex = /(walked|intent walk|hit by pitch)/i;
+  const pitchingChangeRegex = /(?:pitching change:|takes the mound|now pitching:?)\s*([a-z\s]+)/i;
 
-  let currentInning = 'Top 1';
+  let activePitcher = null;
 
   lines.forEach(line => {
-    // Track inning switches
-    if (/^(top|bottom)\s+\d+/i.test(line)) {
-      currentInning = line;
-      return;
+    const lineLower = line.toLowerCase();
+
+    // Check for pitching changes
+    const pitchMatch = line.match(pitchingChangeRegex);
+    if (pitchMatch) {
+      const candidateName = pitchMatch[1].replace(/replaces.*/i, '').trim();
+      if (candidateName.length > 2) {
+        activePitcher = candidateName;
+        initPitcher(pitchers, activePitcher, rosterMap);
+      }
     }
-
-    // Process At-Bats: Look for standard "Player Name [action]" lines
-    // Example: "John Smith singled to center field."
-    const tokens = line.split(' ');
-    if (tokens.length < 3) return;
-
-    // Detect player name candidate at start of sentence
-    const playAction = line.toLowerCase();
 
     // Check for Hits
     const hitMatch = line.match(hitRegex);
@@ -67,6 +66,14 @@ function parseGameLog(rawText, roster = []) {
           result: 'hit',
           text: line
         });
+
+        // Credit to active pitcher if tracked
+        if (activePitcher) {
+          initPitcher(pitchers, activePitcher, rosterMap);
+          pitchers[activePitcher].bf++;
+          pitchers[activePitcher].h++;
+          if (hitType === 'homered') pitchers[activePitcher].hr++;
+        }
       }
       return;
     }
@@ -89,6 +96,13 @@ function parseGameLog(rawText, roster = []) {
           result: 'out',
           text: line
         });
+
+        // Credit out and batter faced to active pitcher
+        if (activePitcher) {
+          initPitcher(pitchers, activePitcher, rosterMap);
+          pitchers[activePitcher].bf++;
+          pitchers[activePitcher].outs++;
+        }
       }
       return;
     }
@@ -102,6 +116,13 @@ function parseGameLog(rawText, roster = []) {
         hitters[playerName].pa++;
         hitters[playerName].ab++;
         hitters[playerName].so++;
+
+        if (activePitcher) {
+          initPitcher(pitchers, activePitcher, rosterMap);
+          pitchers[activePitcher].bf++;
+          pitchers[activePitcher].outs++;
+          pitchers[activePitcher].so++;
+        }
       }
       return;
     }
@@ -113,17 +134,23 @@ function parseGameLog(rawText, roster = []) {
       if (playerName) {
         initHitter(hitters, playerName, rosterMap);
         hitters[playerName].pa++;
-        if (line.toLowerCase().includes('hit by pitch')) {
+        if (lineLower.includes('hit by pitch')) {
           hitters[playerName].hbp++;
         } else {
           hitters[playerName].bb++;
+        }
+
+        if (activePitcher) {
+          initPitcher(pitchers, activePitcher, rosterMap);
+          pitchers[activePitcher].bf++;
+          pitchers[activePitcher].bb++;
         }
       }
       return;
     }
   });
 
-  // Calculate final averages & percentages for each hitter
+  // Post-process Hitter Stats
   Object.keys(hitters).forEach(name => {
     const h = hitters[name];
     h.avg = h.ab > 0 ? (h.hits / h.ab).toFixed(3) : '.000';
@@ -131,36 +158,40 @@ function parseGameLog(rawText, roster = []) {
     h.slg = h.ab > 0 ? ((h.singles + (h.doubles * 2) + (h.triples * 3) + (h.hr * 4)) / h.ab).toFixed(3) : '.000';
   });
 
+  // Post-process Pitcher Stats
+  Object.keys(pitchers).forEach(name => {
+    const p = pitchers[name];
+    const fullInnings = Math.floor(p.outs / 3);
+    const remOuts = p.outs % 3;
+    p.ipDisplay = `${fullInnings}.${remOuts}`;
+    p.ipDecimal = p.outs / 3;
+    
+    // WHIP = (Walks + Hits) / Innings Pitched
+    p.whip = p.ipDecimal > 0 ? ((p.h + p.bb) / p.ipDecimal).toFixed(2) : '0.00';
+    
+    // Strikeout to Walk Ratio
+    p.kBbRatio = p.bb > 0 ? (p.so / p.bb).toFixed(1) : p.so.toFixed(1);
+  });
+
   return { hitters, pitchers };
 }
 
-/**
- * Extracts player name appearing before the play outcome text.
- */
 function extractPlayerName(line, matchedAction) {
   const actionIdx = line.indexOf(matchedAction);
   if (actionIdx <= 0) return null;
   const rawName = line.substring(0, actionIdx).trim();
-  // Basic sanity check on name length
   return rawName.length > 2 && rawName.length < 30 ? rawName : null;
 }
 
-/**
- * Cleans up field location strings (e.g., "left field", "shortstop", "shallow right").
- */
 function cleanLocation(locStr) {
   if (!locStr) return 'center field';
   let cleaned = locStr.toLowerCase().replace(/[\.\,\;]/g, '').trim();
-  // Cut off extra clause words if present (e.g. "center field for out 2")
   if (cleaned.includes(' for ')) {
     cleaned = cleaned.split(' for ')[0];
   }
   return cleaned;
 }
 
-/**
- * Initializes a hitter object if not already present.
- */
 function initHitter(hitters, name, rosterMap) {
   if (!hitters[name]) {
     const rosterInfo = rosterMap[name.toLowerCase()] || {};
@@ -184,6 +215,27 @@ function initHitter(hitters, name, rosterMap) {
       obp: '.000',
       slg: '.000',
       spray: []
+    };
+  }
+}
+
+function initPitcher(pitchers, name, rosterMap) {
+  if (!pitchers[name]) {
+    const rosterInfo = rosterMap[name.toLowerCase()] || {};
+    pitchers[name] = {
+      name: name,
+      number: rosterInfo.number || '--',
+      throws: rosterInfo.throws || 'R',
+      pos: 'P',
+      outs: 0,
+      bf: 0,
+      h: 0,
+      bb: 0,
+      so: 0,
+      hr: 0,
+      ipDisplay: '0.0',
+      whip: '0.00',
+      kBbRatio: '0.0'
     };
   }
 }
