@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Scouting Report</title>
-  <!-- Tailwind CSS CDN for utility styling -->
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Custom CSS for navigation button states -->
+  <!-- Custom CSS for navigation styling -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex">
@@ -14,7 +14,7 @@
   <!-- LEFT SIDEBAR -->
   <aside class="w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col gap-6 shrink-0 h-screen sticky top-0">
     
-    <!-- App Branding & Team Title -->
+    <!-- Branding & Title -->
     <div class="overflow-hidden">
       <h1 class="text-lg font-extrabold text-emerald-400 tracking-tight whitespace-nowrap">THE SCOUTING REPORT</h1>
       <p id="myTeamDisplay" class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Team Command Center</p>
@@ -23,9 +23,8 @@
     <!-- Opponent Selector Module -->
     <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
       <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Opponent</label>
-      <select id="opponentSelect" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
-        <option value="Ridgeview High">Ridgeview High</option>
-        <option value="Oak Creek">Oak Creek</option>
+      <select id="opponentSelect" onchange="handleOpponentChange()" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
+        <!-- Dynamically populated by storage.js -->
       </select>
       <div class="flex gap-1.5 pt-1">
         <button onclick="addOpponent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1 rounded border border-slate-700 font-semibold">+ Add</button>
@@ -33,7 +32,7 @@
       </div>
     </div>
 
-    <!-- Navigation Tabs (Clean Vertical Stacking) -->
+    <!-- Navigation Tabs -->
     <nav class="flex flex-col gap-2 flex-1">
       <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn active">
         <span>📊</span> <span>Dashboard</span>
@@ -69,9 +68,52 @@
 
     <!-- View 2: Uploading -->
     <section id="view-uploading" class="tab-view hidden space-y-6">
-      <h2 class="text-2xl font-bold">Upload GameChanger Logs</h2>
-      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
-        <p class="text-sm text-slate-400">Paste GameChanger Play-by-Play text here.</p>
+      <div>
+        <h2 class="text-2xl font-bold text-white">Upload GameChanger Logs</h2>
+        <p class="text-xs text-slate-400 mt-1">Paste play-by-play text exported from GameChanger to update active scouting models.</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Input Form (2 Columns Wide) -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl">
+          <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex-1">
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Game Date</label>
+              <input id="gameDateInput" type="date" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Game Notes / Title</label>
+              <input id="gameNotesInput" type="text" placeholder="e.g., Spring Opener vs Ridgeview" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase mb-1">GameChanger Play-by-Play Text</label>
+            <textarea id="pbpInput" rows="10" placeholder="Paste full GameChanger Play-by-Play log here..." class="w-full bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
+          </div>
+
+          <div class="flex justify-between items-center pt-2">
+            <span id="uploadStatus" class="text-xs text-emerald-400 font-semibold"></span>
+            <button onclick="handleSaveGameLog()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-5 py-2.5 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
+              <span>💾</span> <span>Save Game Log</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Stored Games List for Active Opponent (1 Column Wide) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl flex flex-col">
+          <div class="border-b border-slate-800 pb-3">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Loaded Games</h3>
+            <p id="loadedGamesSubheader" class="text-[11px] text-emerald-400 font-semibold mt-0.5">For Ridgeview High</p>
+          </div>
+
+          <div id="gamesListContainer" class="flex-1 space-y-2 overflow-y-auto max-h-[350px]">
+            <!-- Dynamically populated by js/app.js -->
+            <p class="text-xs text-slate-500 italic">No games saved for this opponent yet.</p>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -101,7 +143,8 @@
 
   </main>
 
-  <!-- App Controller Script -->
+  <!-- JavaScript Modules -->
+  <script src="js/storage.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
