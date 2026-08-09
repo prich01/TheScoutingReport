@@ -1,10 +1,10 @@
 /**
- * Tailored GameChanger Play-by-Play Parser (js/parser.js)
+ * Advanced GameChanger Parser with Team Filtering & Pitcher Tracking
  */
 
-function parseGameLog(rawText = '', roster = []) {
+function parseGameLog(rawText = '', opponentName = '', roster = []) {
   console.log("=== STARTING GAME LOG PARSER ===");
-  
+
   const result = {
     hitters: {},
     pitchers: {}
@@ -16,60 +16,93 @@ function parseGameLog(rawText = '', roster = []) {
   }
 
   const rawLines = rawText.split(/\r?\n/);
+  
+  let currentHalf = ''; // 'TOP' or 'BOTTOM'
+  let topTeam = '';
+  let bottomTeam = '';
   let currentPitcherName = 'Unknown Pitcher';
 
   rawLines.forEach((line) => {
     const cleanLine = line.trim();
     if (!cleanLine) return;
 
-    // 1. SKIP SYSTEM CLUTTER (Pitches, Out counts, Scores, Lines like "Single", "3 Outs")
-    if (
-      /^(Top|Bottom|End|\d+ Out|\d+ Outs|Ball \d|Strike \d|Foul|In play|BRDN|OKRD|Single|Double|Triple|Home Run|Strikeout|Fly Out|Ground Out|Line Out|Pop Out|Walk|Hit By Pitch|Dropped 3rd Strike|Fielder's Choice|Error|Sacrifice Bunt|Double Play)/i.test(cleanLine)
-    ) {
+    // --- 1. TRACK INNING & TEAMS ---
+    // Example: "Top 1st - Bearden Varsity Bulldogs"
+    const inningMatch = cleanLine.match(/^(Top|Bottom)\s+\d+(?:st|nd|rd|th)?\s*-\s*(.+)/i);
+    if (inningMatch) {
+      currentHalf = inningMatch[1].toUpperCase();
+      const teamName = inningMatch[2].trim();
+      if (currentHalf === 'TOP') topTeam = teamName;
+      if (currentHalf === 'BOTTOM') bottomTeam = teamName;
       return;
     }
 
-    // 2. DETECT PITCHING CHANGES
-    // Example: "Lineup changed: M Teasley in at pitcher" or "Lineup changed: C Feagan in at pitcher"
-    if (cleanLine.includes('in at pitcher') || cleanLine.includes('takes the mound')) {
+    // --- 2. DETECT PITCHING CHANGES ---
+    // Format A: "Lineup changed: M Adams in at pitcher"
+    if (cleanLine.includes('in at pitcher')) {
       const pMatch = cleanLine.match(/Lineup changed:\s*([A-Za-z\s.\-]+?)\s*in at pitcher/i);
       if (pMatch && pMatch[1]) {
         currentPitcherName = pMatch[1].trim();
         ensurePitcher(result.pitchers, currentPitcherName);
-        console.log(`Pitcher updated to: ${currentPitcherName}`);
+        console.log(`[Pitcher Lineup Change]: ${currentPitcherName}`);
       }
       return;
     }
 
-    // 3. PROCESS HITTER EVENT SENTENCES
-    // Look for standard play descriptions (e.g., "M Schroeffel singles on a line drive...", "W East is hit by pitch...")
-    const eventRegex = /^([A-Z]\s+[A-Za-z'.\-]+|[A-Z][a-zA-z'.\-]+\s+[A-Z][a-zA-z'.\-]+)\s+(singles|doubles|triples|homers|strikes out|grounds|lines|flies|pops|walks|is hit by pitch|hits|bunts|out at)/i;
-    
+    // Format B: "E Frederick in for pitcher M Adams"
+    if (cleanLine.includes('in for pitcher')) {
+      const pMatch = cleanLine.match(/([A-Za-z\s.\-]+?)\s+in for pitcher/i);
+      if (pMatch && pMatch[1]) {
+        currentPitcherName = pMatch[1].trim();
+        ensurePitcher(result.pitchers, currentPitcherName);
+        console.log(`[Pitcher Substitution]: ${currentPitcherName}`);
+      }
+      return;
+    }
+
+    // --- 3. SKIP SYSTEM CLUTTER ---
+    if (/^(Top|Bottom|End|\d+ Out|\d+ Outs|Ball \d|Strike \d|Foul|In play|BRDN|OKRD|Single|Double|Triple|Home Run|Strikeout|Fly Out|Ground Out|Line Out|Pop Out|Walk|Hit By Pitch|Dropped 3rd Strike|Fielder's Choice|Error|Sacrifice Bunt|Double Play)/i.test(cleanLine)) {
+      return;
+    }
+
+    // --- 4. PROCESS PLAY SENTENCES ---
+    // Example: "M Schroeffel singles on a line drive...", "F Piper strikes out swinging, M Teasley pitching."
+    const eventRegex = /^([A-Z]\s+[A-Za-z'.\-]+|[A-Z][a-zA-Z'.\-]+\s+[A-Z][a-zA-Z'.\-]+)\s+(singles|doubles|triples|homers|strikes out|grounds|lines|flies|pops|walks|is hit by pitch|hits|bunts|out at)/i;
     const match = cleanLine.match(eventRegex);
 
     if (match) {
       const hitterName = match[1].trim();
 
-      // Check if sentence specifies a explicit pitcher (e.g., "F Piper strikes out swinging, M Teasley pitching.")
+      // Check for in-line pitcher tags: ", M Teasley pitching."
       const pitcherOverrideMatch = cleanLine.match(/,\s*([A-Za-z\s.\-]+?)\s+pitching/i);
-      const activePitcher = pitcherOverrideMatch ? pitcherOverrideMatch[1].trim() : currentPitcherName;
+      if (pitcherOverrideMatch && pitcherOverrideMatch[1]) {
+        currentPitcherName = pitcherOverrideMatch[1].trim();
+      }
+
+      // OPTIONAL TEAM FILTER:
+      // If an opponentName is specified (e.g. "Bearden"), only parse hitters when that team is at bat!
+      const currentBattingTeam = (currentHalf === 'TOP') ? topTeam : bottomTeam;
+      if (opponentName && currentBattingTeam && !currentBattingTeam.toLowerCase().includes(opponentName.toLowerCase())) {
+        // Skip parsing hitters for the other team
+        return;
+      }
 
       const hitter = ensureHitter(result.hitters, hitterName, roster);
-      const pitcher = ensurePitcher(result.pitchers, activePitcher);
+      const pitcher = ensurePitcher(result.pitchers, currentPitcherName);
 
       processEventLine(cleanLine, hitter, pitcher);
     }
   });
 
   console.log("=== PARSING COMPLETE ===");
-  console.log("Hitters Found:", Object.keys(result.hitters));
-  console.log("Pitchers Found:", Object.keys(result.pitchers));
+  console.log("Extracted Opponent Hitters:", Object.keys(result.hitters));
+  console.log("Extracted Pitchers:", Object.keys(result.pitchers));
 
   return result;
 }
 
 // ==========================================
-// HELPER FUNCTIONS
+// HELPERS
 // ==========================================
 
 function ensureHitter(hitters, name, roster = []) {
