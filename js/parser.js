@@ -1,5 +1,5 @@
 /**
- * Optimized GameChanger Play-by-Play Parser (js/parser.js)
+ * Tailored GameChanger Play-by-Play Parser (js/parser.js)
  */
 
 function parseGameLog(rawText = '', roster = []) {
@@ -11,84 +11,73 @@ function parseGameLog(rawText = '', roster = []) {
   };
 
   if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
-    console.warn("Parser received empty or invalid text input.");
+    console.warn("Parser received empty or invalid input.");
     return result;
   }
 
-  // Normalize line breaks & split into individual lines
   const rawLines = rawText.split(/\r?\n/);
-  console.log(`Total raw lines detected: ${rawLines.length}`);
-
   let currentPitcherName = 'Unknown Pitcher';
 
-  rawLines.forEach((line, index) => {
+  rawLines.forEach((line) => {
     const cleanLine = line.trim();
     if (!cleanLine) return;
 
-    // Skip inning headers, counts, and pitch-by-pitch clutter
-    if (/^(Top|Bottom|End|Inning|Ball|Strike|Foul|Out|\d+-\d+)/i.test(cleanLine)) {
+    // 1. SKIP SYSTEM CLUTTER (Pitches, Out counts, Scores, Lines like "Single", "3 Outs")
+    if (
+      /^(Top|Bottom|End|\d+ Out|\d+ Outs|Ball \d|Strike \d|Foul|In play|BRDN|OKRD|Single|Double|Triple|Home Run|Strikeout|Fly Out|Ground Out|Line Out|Pop Out|Walk|Hit By Pitch|Dropped 3rd Strike|Fielder's Choice|Error|Sacrifice Bunt|Double Play)/i.test(cleanLine)
+    ) {
       return;
     }
 
-    // --- A. PITCHING CHANGE DETECTION ---
-    if (/takes the mound|pitching change|enters to pitch|substitutes.*pitcher/i.test(cleanLine)) {
-      const pInfo = extractPlayerInfo(cleanLine);
-      if (pInfo.name) {
-        currentPitcherName = pInfo.name;
-        ensurePitcher(result.pitchers, currentPitcherName, pInfo.number);
-        console.log(`[Line ${index}] Active Pitcher updated to: ${currentPitcherName}`);
+    // 2. DETECT PITCHING CHANGES
+    // Example: "Lineup changed: M Teasley in at pitcher" or "Lineup changed: C Feagan in at pitcher"
+    if (cleanLine.includes('in at pitcher') || cleanLine.includes('takes the mound')) {
+      const pMatch = cleanLine.match(/Lineup changed:\s*([A-Za-z\s.\-]+?)\s*in at pitcher/i);
+      if (pMatch && pMatch[1]) {
+        currentPitcherName = pMatch[1].trim();
+        ensurePitcher(result.pitchers, currentPitcherName);
+        console.log(`Pitcher updated to: ${currentPitcherName}`);
       }
       return;
     }
 
-    // --- B. HITTER / EVENT DETECTION ---
-    // Look for key GameChanger outcome action words
-    const isEvent = /(singled|doubled|tripled|homered|struck out|walked|hit by pitch|grounded|flied|lined|popped|reached on|out at)/i.test(cleanLine);
+    // 3. PROCESS HITTER EVENT SENTENCES
+    // Look for standard play descriptions (e.g., "M Schroeffel singles on a line drive...", "W East is hit by pitch...")
+    const eventRegex = /^([A-Z]\s+[A-Za-z'.\-]+|[A-Z][a-zA-z'.\-]+\s+[A-Z][a-zA-z'.\-]+)\s+(singles|doubles|triples|homers|strikes out|grounds|lines|flies|pops|walks|is hit by pitch|hits|bunts|out at)/i;
+    
+    const match = cleanLine.match(eventRegex);
 
-    if (isEvent) {
-      const pInfo = extractPlayerInfo(cleanLine);
-      if (!pInfo.name) return;
+    if (match) {
+      const hitterName = match[1].trim();
 
-      const hitter = ensureHitter(result.hitters, pInfo.name, pInfo.number, roster);
-      const pitcher = ensurePitcher(result.pitchers, currentPitcherName, '00');
+      // Check if sentence specifies a explicit pitcher (e.g., "F Piper strikes out swinging, M Teasley pitching.")
+      const pitcherOverrideMatch = cleanLine.match(/,\s*([A-Za-z\s.\-]+?)\s+pitching/i);
+      const activePitcher = pitcherOverrideMatch ? pitcherOverrideMatch[1].trim() : currentPitcherName;
+
+      const hitter = ensureHitter(result.hitters, hitterName, roster);
+      const pitcher = ensurePitcher(result.pitchers, activePitcher);
 
       processEventLine(cleanLine, hitter, pitcher);
     }
   });
 
   console.log("=== PARSING COMPLETE ===");
-  console.log("Extracted Hitters:", Object.keys(result.hitters));
-  console.log("Extracted Pitchers:", Object.keys(result.pitchers));
+  console.log("Hitters Found:", Object.keys(result.hitters));
+  console.log("Pitchers Found:", Object.keys(result.pitchers));
 
   return result;
 }
 
 // ==========================================
-// HELPER EXTRACTORS
+// HELPER FUNCTIONS
 // ==========================================
 
-function extractPlayerInfo(line) {
-  // Regex 1: Matches "#12 John Smith" or "#7 Smith"
-  let match = line.match(/^#?(\d+)?\s*([A-Z][a-zA-Z'.\-]+(?:\s+[A-Z][a-zA-Z'.\-]+)+)/);
-  if (match) {
-    return { number: match[1] || '00', name: match[2].trim() };
-  }
-
-  // Regex 2: Matches single-name or initial format like "J. Smith" or "Smith" at start of line
-  match = line.match(/^#?(\d+)?\s*([A-Z][a-zA-Z'.\-]+)/);
-  if (match) {
-    return { number: match[1] || '00', name: match[2].trim() };
-  }
-
-  return { number: '00', name: null };
-}
-
-function ensureHitter(hitters, name, number, roster) {
+function ensureHitter(hitters, name, roster = []) {
   if (!hitters[name]) {
     const match = roster.find(r => r.name.toLowerCase() === name.toLowerCase()) || {};
     hitters[name] = {
       name: name,
-      number: number !== '00' ? number : (match.number || '00'),
+      number: match.number || '00',
       bats: match.bats || 'R',
       throws: match.throws || 'R',
       pos: match.pos || 'UT',
@@ -99,11 +88,11 @@ function ensureHitter(hitters, name, number, roster) {
   return hitters[name];
 }
 
-function ensurePitcher(pitchers, name, number) {
+function ensurePitcher(pitchers, name) {
   if (!pitchers[name]) {
     pitchers[name] = {
       name: name,
-      number: number || '00',
+      number: '00',
       throws: 'R',
       outs: 0, bf: 0, h: 0, bb: 0, so: 0, hr: 0
     };
@@ -120,7 +109,7 @@ function processEventLine(line, hitter, pitcher) {
   const type = extractType(text);
 
   // WALKS / HBP
-  if (text.includes('walked') || text.includes('base on balls')) {
+  if (text.includes('walks')) {
     hitter.bb += 1;
     pitcher.bb += 1;
     return;
@@ -133,17 +122,17 @@ function processEventLine(line, hitter, pitcher) {
   // AT-BATS
   hitter.ab += 1;
 
-  if (text.includes('singled') || text.includes('single')) {
+  if (text.includes('singles')) {
     recordHit(hitter, pitcher, 'singles', location, type);
-  } else if (text.includes('doubled') || text.includes('double')) {
+  } else if (text.includes('doubles')) {
     recordHit(hitter, pitcher, 'doubles', location, type);
-  } else if (text.includes('tripled') || text.includes('triple')) {
+  } else if (text.includes('triples')) {
     recordHit(hitter, pitcher, 'triples', location, type);
-  } else if (text.includes('homered') || text.includes('home run')) {
+  } else if (text.includes('homers')) {
     recordHit(hitter, pitcher, 'hr', location, type);
   } else {
     // OUTS
-    if (text.includes('struck out')) {
+    if (text.includes('strikes out')) {
       hitter.so += 1;
       pitcher.so += 1;
     }
@@ -171,23 +160,23 @@ function recordHit(hitter, pitcher, hitType, location, type) {
 function extractLocation(text) {
   if (text.includes('left-center')) return 'left-center';
   if (text.includes('right-center')) return 'right-center';
-  if (text.includes('left field') || text.includes('to lf')) return 'left field';
-  if (text.includes('right field') || text.includes('to rf')) return 'right field';
-  if (text.includes('center field') || text.includes('to cf')) return 'center field';
-  if (text.includes('shortstop') || text.includes('to ss')) return 'shortstop';
-  if (text.includes('third base') || text.includes('to 3b')) return 'third base';
-  if (text.includes('second base') || text.includes('to 2b')) return 'second base';
-  if (text.includes('first base') || text.includes('to 1b')) return 'first base';
-  if (text.includes('pitcher') || text.includes('to p')) return 'pitcher';
-  if (text.includes('catcher') || text.includes('to c')) return 'catcher';
+  if (text.includes('left fielder') || text.includes('left field')) return 'left field';
+  if (text.includes('right fielder') || text.includes('right field')) return 'right field';
+  if (text.includes('center fielder') || text.includes('center field')) return 'center field';
+  if (text.includes('shortstop')) return 'shortstop';
+  if (text.includes('third baseman') || text.includes('third base')) return 'third base';
+  if (text.includes('second baseman') || text.includes('second base')) return 'second base';
+  if (text.includes('first baseman') || text.includes('first base')) return 'first base';
+  if (text.includes('pitcher')) return 'pitcher';
+  if (text.includes('catcher')) return 'catcher';
   return null;
 }
 
 function extractType(text) {
   if (text.includes('line drive')) return 'Line Drive';
-  if (text.includes('fly ball')) return 'Fly Ball';
-  if (text.includes('ground ball') || text.includes('grounder')) return 'Ground Ball';
-  if (text.includes('pop fly') || text.includes('pop up')) return 'Pop Fly';
+  if (text.includes('fly ball') || text.includes('flies out')) return 'Fly Ball';
+  if (text.includes('ground ball') || text.includes('grounds out')) return 'Ground Ball';
+  if (text.includes('pop fly') || text.includes('pops out')) return 'Pop Fly';
   if (text.includes('bunt')) return 'Bunt';
   return 'Contact';
 }
