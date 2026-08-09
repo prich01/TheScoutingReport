@@ -1,209 +1,320 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-slate-950 font-sans text-slate-100 antialiased">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Scouting Report</title>
-  <!-- Tailwind CSS CDN -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Scouting Report - Baseball & Softball Intelligence</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/styles.css">
+  
+  <!-- Custom Print & Utility Styles -->
+  <style>
+    @media print {
+      body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      .tab-view {
+        display: block !important;
+      }
+      .card-print {
+        border: 1px solid #cbd5e1 !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex">
+<body class="h-full flex flex-col md:flex-row bg-slate-950 text-slate-100">
 
-  <!-- LEFT SIDEBAR -->
-  <aside class="w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col gap-6 shrink-0 h-screen sticky top-0">
-    
-    <!-- Branding & Title -->
-    <div class="overflow-hidden">
-      <h1 class="text-lg font-extrabold text-emerald-400 tracking-tight whitespace-nowrap">THE SCOUTING REPORT</h1>
-      <p id="myTeamDisplay" class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Team Command Center</p>
-    </div>
-
-    <!-- Opponent Selector Module -->
-    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
-      <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Opponent</label>
-      <select id="opponentSelect" onchange="handleOpponentChange()" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
-        <!-- Dynamically populated -->
-      </select>
-      <div class="flex gap-1.5 pt-1">
-        <button onclick="addOpponent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1 rounded border border-slate-700 font-semibold">+ Add</button>
-        <button onclick="renameOpponent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1 rounded border border-slate-700 font-semibold">✏️ Rename</button>
-      </div>
-    </div>
-
-    <!-- Navigation Tabs -->
-    <nav class="flex flex-col gap-2 flex-1">
-      <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn active">
-        <span>📊</span> <span>Dashboard</span>
-      </button>
-      <button onclick="switchTab('uploading')" id="nav-uploading" class="nav-btn">
-        <span>📥</span> <span>Uploading</span>
-      </button>
-      <button onclick="switchTab('opponent')" id="nav-opponent" class="nav-btn">
-        <span>🎯</span> <span>Opponent Reports</span>
-      </button>
-      <button onclick="switchTab('self')" id="nav-self" class="nav-btn">
-        <span>🛡️</span> <span>Self Reports</span>
-      </button>
-      <button onclick="switchTab('downloads')" id="nav-downloads" class="nav-btn">
-        <span>🖨️</span> <span>Downloads</span>
-      </button>
-    </nav>
-
-    <!-- Sidebar Footer -->
-    <div class="text-[10px] text-slate-600 text-center border-t border-slate-800/60 pt-3">The Scouting Report v1.0</div>
-  </aside>
-
-  <!-- MAIN CONTENT AREA -->
-  <main class="flex-1 p-8 overflow-y-auto">
-    
-    <!-- View 1: Dashboard -->
-    <section id="view-dashboard" class="tab-view space-y-6">
-      <h2 class="text-2xl font-bold">Dashboard</h2>
-      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
-        <p class="text-sm text-slate-400">Pre-game cheat sheet and quick stats will render here.</p>
-      </div>
-    </section>
-
-    <!-- View 2: Uploading -->
-    <section id="view-uploading" class="tab-view hidden space-y-6">
-      <div>
-        <h2 class="text-2xl font-bold text-white">Upload GameChanger Logs & Roster</h2>
-        <p class="text-xs text-slate-400 mt-1">Paste play-by-play logs and edit player handedness and jersey numbers for scouting accuracy.</p>
-      </div>
-
-      <!-- Top Row: Upload Form + Stored Games -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <!-- Input Form (2 Columns Wide) -->
-        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl">
-          <div class="flex flex-col sm:flex-row gap-4">
-            <div class="flex-1">
-              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Game Date</label>
-              <input id="gameDateInput" type="date" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
-            </div>
-            <div class="flex-1">
-              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Game Notes / Title</label>
-              <input id="gameNotesInput" type="text" placeholder="e.g., Spring Opener vs Ridgeview" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
-            </div>
+  <!-- ========================================== -->
+  <!-- SIDEBAR NAVIGATION                         -->
+  <!-- ========================================== -->
+  <aside class="no-print w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
+    <div>
+      <!-- Brand Header -->
+      <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
           </div>
-
           <div>
-            <label class="block text-xs font-bold text-slate-400 uppercase mb-1">GameChanger Play-by-Play Text</label>
-            <textarea id="pbpInput" rows="8" placeholder="Paste full GameChanger Play-by-Play log here..." class="w-full bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
-          </div>
-
-          <div class="flex justify-between items-center pt-2">
-            <span id="uploadStatus" class="text-xs text-emerald-400 font-semibold"></span>
-            <button onclick="handleSaveGameLog()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-5 py-2.5 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
-              <span>💾</span> <span>Save Game Log & Auto-Extract Roster</span>
-            </button>
+            <h1 class="font-black text-sm tracking-wide text-white uppercase">The Scouting Report</h1>
+            <p class="text-[10px] text-slate-400 font-medium">Game Log Intelligence</p>
           </div>
         </div>
-
-        <!-- Stored Games List (1 Column Wide) -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl flex flex-col">
-          <div class="border-b border-slate-800 pb-3">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Loaded Games</h3>
-            <p id="loadedGamesSubheader" class="text-[11px] text-emerald-400 font-semibold mt-0.5">For Ridgeview High</p>
-          </div>
-
-          <div id="gamesListContainer" class="flex-1 space-y-2 overflow-y-auto max-h-[300px]">
-            <p class="text-xs text-slate-500 italic">No games saved for this opponent yet.</p>
-          </div>
-        </div>
-
       </div>
 
-      <!-- Bottom Row: Opponent Roster Editor -->
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-xl">
-        <div class="flex justify-between items-center border-b border-slate-800 pb-4">
-          <div>
-            <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider">Opponent Roster & Handedness Editor</h3>
-            <p id="rosterSubheader" class="text-xs text-slate-400 mt-0.5">Auto-extracted from game logs or added manually. Updates save instantly.</p>
-          </div>
-          <button onclick="handleManualAddPlayer()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded border border-slate-700 font-semibold">
-            + Add Player
+      <!-- Active Opponent Selector -->
+      <div class="p-4 border-b border-slate-800 bg-slate-950/40">
+        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+          Active Opponent Team
+        </label>
+        <div class="flex items-center gap-1.5">
+          <select id="opponentSelect" onchange="handleOpponentChange()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:border-emerald-500">
+            <!-- Populated via JS -->
+          </select>
+          <button onclick="addOpponent()" title="Add Opponent" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          </button>
+          <button onclick="renameOpponent()" title="Rename Opponent" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
           </button>
         </div>
+      </div>
 
-        <!-- Roster Table -->
+      <!-- Navigation Links -->
+      <nav class="p-3 space-y-1">
+        <button id="nav-dashboard" onclick="switchTab('dashboard')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+          Pre-Game Dashboard
+        </button>
+
+        <button id="nav-uploading" onclick="switchTab('uploading')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          Logs & Rosters
+        </button>
+
+        <button id="nav-opponent" onclick="switchTab('opponent')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          Opponent Scouting Report
+        </button>
+
+        <button id="nav-self" onclick="switchTab('self')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+          Self-Scouting Report
+        </button>
+
+        <button id="nav-downloads" onclick="switchTab('downloads')" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H7a2 2 0 00-2 2v4h10z"></path></svg>
+          Dugout Cheat Sheets
+        </button>
+      </nav>
+    </div>
+
+    <!-- Footer Note -->
+    <div class="p-4 border-t border-slate-800 text-[10px] text-slate-500">
+      <p class="font-semibold text-slate-400">Game Changer Play-by-Play Compatible</p>
+      <p class="mt-0.5">Parsed offline in-browser.</p>
+    </div>
+  </aside>
+
+  <!-- ========================================== -->
+  <!-- MAIN VIEW CONTAINER                        -->
+  <!-- ========================================== -->
+  <main class="flex-1 overflow-y-auto p-4 md:p-8">
+
+    <!-- 1. DASHBOARD VIEW -->
+    <div id="view-dashboard" class="tab-view hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
+        <div>
+          <div class="flex items-center gap-3">
+            <h2 id="dashOpponentName" class="text-2xl font-black text-white">Selected Team</h2>
+            <span id="dashGameCountBadge" class="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2.5 py-1 rounded-full">0 Games Tracked</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Pre-game tactical summary, high-value callouts, and pitching approaches.</p>
+        </div>
+        <button onclick="window.print()" class="self-start md:self-auto bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H7a2 2 0 00-2 2v4h10z"></path></svg>
+          Print Pre-Game Sheet
+        </button>
+      </div>
+
+      <!-- Key Player Callout Cards -->
+      <div id="dashCalloutsGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Callout cards populated via JS -->
+      </div>
+
+      <!-- Team Aggregated Stat Strip -->
+      <div id="dashTeamStatsBar" class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-lg flex flex-wrap justify-around text-center gap-4">
+        <!-- Team stats populated via JS -->
+      </div>
+
+      <!-- Tactical Lineup Cheat Sheet -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-white">Dugout Quick-Reference Lineup</h3>
+            <p class="text-xs text-slate-400">At-a-glance spray tendencies and recommended pitching approaches.</p>
+          </div>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs text-slate-300">
-            <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
+            <thead class="bg-slate-950 text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-slate-800">
               <tr>
-                <th class="p-2.5 w-16">Jersey #</th>
-                <th class="p-2.5">Player Name</th>
-                <th class="p-2.5 w-24">Bats</th>
-                <th class="p-2.5 w-24">Throws</th>
-                <th class="p-2.5 w-28">Primary Pos</th>
-                <th class="p-2.5 w-12 text-center">Action</th>
+                <th class="p-2.5">#</th>
+                <th class="p-2.5">Player</th>
+                <th class="p-2.5">Pos</th>
+                <th class="p-2.5">B/T</th>
+                <th class="p-2.5">AVG / OBP / SLG</th>
+                <th class="p-2.5">BB / K</th>
+                <th class="p-2.5">Tendency</th>
+                <th class="p-2.5">Pitching Approach</th>
               </tr>
             </thead>
-            <tbody id="rosterTableBody" class="divide-y divide-slate-800/60">
-              <!-- Dynamically populated -->
+            <tbody id="dashCheatSheetTbody" class="divide-y divide-slate-800/60 font-mono">
+              <!-- Populated via JS -->
             </tbody>
           </table>
         </div>
       </div>
+    </div>
 
-    </section>
+    <!-- 2. LOGS & ROSTER MANAGEMENT VIEW -->
+    <div id="view-uploading" class="tab-view space-y-6">
+      <div class="border-b border-slate-800 pb-4">
+        <h2 class="text-xl font-bold text-white">Game Log Management & Roster Settings</h2>
+        <p class="text-xs text-slate-400 mt-1">Paste raw Game Changer play-by-play logs to extract hitter and pitcher data.</p>
+      </div>
 
-    <!-- View 3: Opponent Reports -->
-    <section id="view-opponent" class="tab-view hidden space-y-8">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-4">
-        <div>
-          <h2 class="text-2xl font-bold text-white">Opponent Scouting Reports</h2>
-          <p id="opponentReportSubheader" class="text-xs text-slate-400 mt-1">Aggregated pitching and hitting scouting data from saved game logs.</p>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left 2 Cols: Paste & Saved Logs -->
+        <div class="lg:col-span-2 space-y-6">
+          <!-- Game Log Input Card -->
+          <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg space-y-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              Paste New Game Log
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Game Date</label>
+                <input type="date" id="gameDateInput" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Notes / Opponent Context</label>
+                <input type="text" id="gameNotesInput" placeholder="e.g. Regular Season Game 4" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Play-by-Play Text</label>
+              <textarea id="pbpInput" rows="7" placeholder="Paste play-by-play text here from Game Changer..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500"></textarea>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <button onclick="handleSaveGameLog()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-lg">
+                Process & Save Game Log
+              </button>
+              <span id="uploadStatus" class="text-xs font-semibold text-emerald-400"></span>
+            </div>
+          </div>
+
+          <!-- Saved Games List -->
+          <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg space-y-3">
+            <h3 class="text-sm font-bold text-white">Saved Game Logs</h3>
+            <p id="loadedGamesSubheader" class="text-xs text-slate-400">Stored play-by-play entries for selected opponent.</p>
+            <div id="gamesListContainer" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+              <!-- Populated via JS -->
+            </div>
+          </div>
         </div>
-        <button onclick="renderOpponentReport()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded border border-slate-700 font-semibold flex items-center gap-1.5">
-          <span>🔄</span> <span>Refresh Reports</span>
+
+        <!-- Right Col: Editable Roster Table -->
+        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg space-y-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h3 class="text-sm font-bold text-white">Team Roster</h3>
+              <p id="rosterSubheader" class="text-[11px] text-slate-400">Manage handness & jersey numbers.</p>
+            </div>
+            <button onclick="handleManualAddPlayer()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded border border-slate-700 font-bold">
+              + Add Player
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-950 text-slate-400 uppercase font-mono text-[9px]">
+                <tr>
+                  <th class="p-1.5">#</th>
+                  <th class="p-1.5">Name</th>
+                  <th class="p-1.5">B</th>
+                  <th class="p-1.5">T</th>
+                  <th class="p-1.5">Pos</th>
+                  <th class="p-1.5 text-center">✕</th>
+                </tr>
+              </thead>
+              <tbody id="rosterTableBody" class="divide-y divide-slate-800/50">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. OPPONENT SCOUTING REPORT VIEW -->
+    <div id="view-opponent" class="tab-view hidden space-y-6">
+      <div class="border-b border-slate-800 pb-4">
+        <h2 class="text-xl font-bold text-white">Opponent Scouting Report</h2>
+        <p id="opponentReportSubheader" class="text-xs text-slate-400 mt-1">Aggregated scouting data and spray tendencies for selected opponent.</p>
+      </div>
+
+      <!-- Pitchers Section -->
+      <div class="space-y-3">
+        <h3 class="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+          <span>⚾</span> Pitching Breakdown
+        </h3>
+        <div id="pitcherCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+
+      <!-- Hitters Section -->
+      <div class="space-y-3 pt-4">
+        <h3 class="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+          <span>🏏</span> Hitting & Spray Tendencies
+        </h3>
+        <div id="hitterCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. SELF-SCOUTING REPORT VIEW -->
+    <div id="view-self" class="tab-view hidden space-y-6">
+      <div class="border-b border-slate-800 pb-4">
+        <h2 class="text-xl font-bold text-white">Self-Scouting Report</h2>
+        <p class="text-xs text-slate-400 mt-1">Track internal roster tendencies and performance metrics.</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-8 rounded-xl text-center text-slate-500 text-xs italic">
+        Select your own team under the Opponent/Team dropdown to manage self-scouting reports and internal tendencies.
+      </div>
+    </div>
+
+    <!-- 5. DUGOUT CHEAT SHEETS (DOWNLOADS VIEW) -->
+    <div id="view-downloads" class="tab-view hidden space-y-6">
+      <div class="border-b border-slate-800 pb-4 flex justify-between items-center">
+        <div>
+          <h2 class="text-xl font-bold text-white">Dugout Printables</h2>
+          <p class="text-xs text-slate-400 mt-1">Formatted cheat sheets designed for laminated dugout clipboards.</p>
+        </div>
+        <button onclick="window.print()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition-colors">
+          Print Full Cheat Sheet
         </button>
       </div>
 
-      <!-- Section 1: Pitching Staff -->
-      <div class="space-y-4">
-        <div class="flex items-center gap-2 border-b border-slate-800/80 pb-2">
-          <span class="text-lg">⚾</span>
-          <h3 class="text-base font-bold text-slate-200 uppercase tracking-wider">Pitching Staff Scouting</h3>
-        </div>
-        <div id="pitcherCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <p class="text-xs text-slate-500 italic col-span-full">No pitching data detected in game logs yet.</p>
-        </div>
+      <div class="bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4">
+        <h3 class="text-sm font-bold text-white">Print Settings</h3>
+        <p class="text-xs text-slate-400">Use standard landscape printing in your browser. Colors auto-invert for high-contrast paper output.</p>
       </div>
-
-      <!-- Section 2: Lineup & Spray Charts -->
-      <div class="space-y-4 pt-2">
-        <div class="flex items-center gap-2 border-b border-slate-800/80 pb-2">
-          <span class="text-lg">🎯</span>
-          <h3 class="text-base font-bold text-slate-200 uppercase tracking-wider">Lineup & Hitting Spray Charts</h3>
-        </div>
-        <div id="hitterCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <p class="text-xs text-slate-500 italic col-span-full">No hitter data parsed yet. Upload logs in the Uploading tab.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- View 4: Self Reports -->
-    <section id="view-self" class="tab-view hidden space-y-6">
-      <h2 class="text-2xl font-bold">Self Reports & Player Development</h2>
-      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
-        <p class="text-sm text-slate-400">QAB%, team benchmarks, and progress charts.</p>
-      </div>
-    </section>
-
-    <!-- View 5: Downloads -->
-    <section id="view-downloads" class="tab-view hidden space-y-6">
-      <h2 class="text-2xl font-bold">Print & Export Center</h2>
-      <div class="p-6 bg-slate-900 border border-slate-800 rounded-xl">
-        <p class="text-sm text-slate-400">One-click dugout printables and individual player card exports.</p>
-      </div>
-    </section>
+    </div>
 
   </main>
 
-  <!-- JavaScript Modules -->
+  <!-- Script Declarations -->
   <script src="js/storage.js"></script>
   <script src="js/parser.js"></script>
   <script src="js/app.js"></script>
