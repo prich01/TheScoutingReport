@@ -1,0 +1,41 @@
+/* Navigation Button Base Styling */
+.nav-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  color: #94a3b8;
+  background-color: transparent;
+  border: 1px solid transparent;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+/* Hover State */
+.nav-btn:hover {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+/* Active Selected Tab State */
+.nav-btn.active {
+  background-color: #065f46;
+  color: #34d399;
+  border-color: #047857;
+}
+
+/* Print styling support */
+@media print {
+  aside {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+}
