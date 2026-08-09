@@ -1,12 +1,12 @@
 /**
  * The Scouting Report - Main Application Controller (js/app.js)
- * Manages UI navigation, team selection, roster editing, game log management,
- * spray chart SVG generation, and report rendering.
+ * Handles UI navigation, team selection, roster editing, game log management,
+ * spray chart SVG generation, pre-game dashboard rendering, and report aggregations.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   initOpponentDropdown();
-  switchTab('uploading');
+  switchTab('dashboard');
 });
 
 // ==========================================
@@ -30,7 +30,9 @@ function switchTab(tabId) {
   if (targetNav) targetNav.classList.add('active');
 
   // Trigger view updates
-  if (tabId === 'opponent') {
+  if (tabId === 'dashboard') {
+    renderDashboard();
+  } else if (tabId === 'opponent') {
     renderOpponentReport();
   } else if (tabId === 'uploading') {
     renderUploadingTab();
@@ -92,12 +94,17 @@ function handleOpponentChange() {
   const rosterSub = document.getElementById('rosterSubheader');
   if (rosterSub) rosterSub.textContent = `Roster and handedness settings for ${selected || 'Selected Team'}.`;
 
+  // Refresh visible tab
   renderUploadingTab();
 
-  // If opponent report view is visible, refresh it
   const oppView = document.getElementById('view-opponent');
   if (oppView && !oppView.classList.contains('hidden')) {
     renderOpponentReport();
+  }
+
+  const dashView = document.getElementById('view-dashboard');
+  if (dashView && !dashView.classList.contains('hidden')) {
+    renderDashboard();
   }
 }
 
@@ -246,7 +253,7 @@ function handleSaveGameLog() {
   // Reset form
   document.getElementById('pbpInput').value = '';
   document.getElementById('gameNotesInput').value = '';
-  
+
   if (statusEl) {
     statusEl.textContent = "✅ Game log saved & roster updated!";
     setTimeout(() => { statusEl.textContent = ""; }, 3500);
@@ -631,4 +638,218 @@ function renderOpponentReport() {
       hitterContainer.appendChild(card);
     });
   }
+}
+
+// ==========================================
+// 6. PRE-GAME DASHBOARD CONTROLLER
+// ==========================================
+
+/**
+ * Renders tactical callout cards, team totals, and the quick dugout cheat sheet.
+ */
+function renderDashboard() {
+  const nameEl = document.getElementById('dashOpponentName');
+  const badgeEl = document.getElementById('dashGameCountBadge');
+  const calloutsGrid = document.getElementById('dashCalloutsGrid');
+  const statsBar = document.getElementById('dashTeamStatsBar');
+  const tbody = document.getElementById('dashCheatSheetTbody');
+
+  if (!nameEl || !calloutsGrid || !tbody) return;
+
+  const activeOpponent = getActiveOpponent();
+  nameEl.textContent = activeOpponent || 'No Opponent Selected';
+
+  if (!activeOpponent) {
+    calloutsGrid.innerHTML = `<p class="text-xs text-slate-500 italic col-span-full">Select an opponent to view scouting dashboard.</p>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-500 italic">No opponent selected.</td></tr>`;
+    return;
+  }
+
+  const games = getOpponentGames(activeOpponent);
+  const roster = getOpponentRoster(activeOpponent);
+  badgeEl.textContent = `${games.length} ${games.length === 1 ? 'Game' : 'Games'} Tracked`;
+
+  if (games.length === 0) {
+    calloutsGrid.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-4 rounded-xl col-span-full text-center text-xs text-slate-500 italic">No game logs uploaded for ${activeOpponent} yet. Paste play-by-play text in the Uploading tab to view pre-game reports.</div>`;
+    statsBar.innerHTML = '';
+    tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-500 italic">No game log data available.</td></tr>`;
+    return;
+  }
+
+  // Aggregate stats across all games
+  const hitters = {};
+  const pitchers = {};
+
+  games.forEach(game => {
+    const parsed = parseGameLog(game.rawText, roster);
+
+    Object.values(parsed.hitters).forEach(h => {
+      if (!hitters[h.name]) hitters[h.name] = { ...h, spray: [...h.spray] };
+      else {
+        hitters[h.name].pa += h.pa;
+        hitters[h.name].ab += h.ab;
+        hitters[h.name].hits += h.hits;
+        hitters[h.name].singles += h.singles;
+        hitters[h.name].doubles += h.doubles;
+        hitters[h.name].triples += h.triples;
+        hitters[h.name].hr += h.hr;
+        hitters[h.name].bb += h.bb;
+        hitters[h.name].so += h.so;
+        hitters[h.name].hbp += h.hbp;
+        hitters[h.name].spray = hitters[h.name].spray.concat(h.spray);
+      }
+    });
+
+    Object.values(parsed.pitchers).forEach(p => {
+      if (!pitchers[p.name]) pitchers[p.name] = { ...p };
+      else {
+        pitchers[p.name].outs += p.outs;
+        pitchers[p.name].bf += p.bf;
+        pitchers[p.name].h += p.h;
+        pitchers[p.name].bb += p.bb;
+        pitchers[p.name].so += p.so;
+        pitchers[p.name].hr += p.hr;
+      }
+    });
+  });
+
+  const hitterList = Object.values(hitters);
+  const pitcherList = Object.values(pitchers);
+
+  // Calculate slash lines
+  hitterList.forEach(h => {
+    h.avgNum = h.ab > 0 ? (h.hits / h.ab) : 0;
+    h.obpNum = h.pa > 0 ? ((h.hits + h.bb + h.hbp) / h.pa) : 0;
+    h.slgNum = h.ab > 0 ? ((h.singles + (h.doubles * 2) + (h.triples * 3) + (h.hr * 4)) / h.ab) : 0;
+    h.opsNum = h.obpNum + h.slgNum;
+
+    h.avg = h.avgNum.toFixed(3).replace(/^0/, '');
+    h.obp = h.obpNum.toFixed(3).replace(/^0/, '');
+    h.slg = h.slgNum.toFixed(3).replace(/^0/, '');
+  });
+
+  // --- 1. RENDER CALLOUT CARDS ---
+  const topHitter = hitterList.length ? [...hitterList].sort((a, b) => b.opsNum - a.opsNum)[0] : null;
+  const powerBat = hitterList.length ? [...hitterList].sort((a, b) => b.hr - a.hr || b.slgNum - a.slgNum)[0] : null;
+  const acePitcher = pitcherList.length ? [...pitcherList].sort((a, b) => b.outs - a.outs || b.so - a.so)[0] : null;
+
+  calloutsGrid.innerHTML = `
+    <!-- Top Overall Threat -->
+    <div class="bg-slate-900 border border-emerald-900/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
+      <div class="absolute top-0 right-0 bg-emerald-500/10 text-emerald-400 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg border-b border-l border-emerald-800/40">
+        🔥 Top Hitting Threat
+      </div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">Highest OPS</div>
+      <div class="text-base font-bold text-white flex items-center gap-2">
+        <span>#${topHitter ? topHitter.number : '00'}</span>
+        <span>${topHitter ? topHitter.name : 'N/A'}</span>
+      </div>
+      <div class="mt-3 flex justify-between text-xs border-t border-slate-800/80 pt-2 text-slate-400">
+        <span>AVG: <strong class="text-emerald-400">${topHitter ? topHitter.avg : '.000'}</strong></span>
+        <span>OBP: <strong class="text-slate-200">${topHitter ? topHitter.obp : '.000'}</strong></span>
+        <span>SLG: <strong class="text-slate-200">${topHitter ? topHitter.slg : '.000'}</strong></span>
+      </div>
+    </div>
+
+    <!-- Power Threat -->
+    <div class="bg-slate-900 border border-amber-900/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
+      <div class="absolute top-0 right-0 bg-amber-500/10 text-amber-400 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg border-b border-l border-amber-800/40">
+        💥 Power Bat
+      </div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">HR & Extra Bases</div>
+      <div class="text-base font-bold text-white flex items-center gap-2">
+        <span>#${powerBat ? powerBat.number : '00'}</span>
+        <span>${powerBat ? powerBat.name : 'N/A'}</span>
+      </div>
+      <div class="mt-3 flex justify-between text-xs border-t border-slate-800/80 pt-2 text-slate-400">
+        <span>HRs: <strong class="text-amber-400">${powerBat ? powerBat.hr : 0}</strong></span>
+        <span>2B/3B: <strong class="text-slate-200">${powerBat ? powerBat.doubles + powerBat.triples : 0}</strong></span>
+        <span>SLG: <strong class="text-slate-200">${powerBat ? powerBat.slg : '.000'}</strong></span>
+      </div>
+    </div>
+
+    <!-- Ace Pitcher -->
+    <div class="bg-slate-900 border border-sky-900/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
+      <div class="absolute top-0 right-0 bg-sky-500/10 text-sky-400 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg border-b border-l border-sky-800/40">
+        ⚾ Primary Arm
+      </div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">Most Work Done</div>
+      <div class="text-base font-bold text-white flex items-center gap-2">
+        <span>#${acePitcher ? acePitcher.number : '00'}</span>
+        <span>${acePitcher ? acePitcher.name : 'N/A'}</span>
+      </div>
+      <div class="mt-3 flex justify-between text-xs border-t border-slate-800/80 pt-2 text-slate-400">
+        <span>IP: <strong class="text-sky-400">${acePitcher ? (acePitcher.outs / 3).toFixed(1) : '0.0'}</strong></span>
+        <span>K: <strong class="text-emerald-400">${acePitcher ? acePitcher.so : 0}</strong></span>
+        <span>BB: <strong class="text-rose-400">${acePitcher ? acePitcher.bb : 0}</strong></span>
+      </div>
+    </div>
+  `;
+
+  // --- 2. RENDER TEAM STATS BAR ---
+  const teamAB = hitterList.reduce((acc, h) => acc + h.ab, 0);
+  const teamHits = hitterList.reduce((acc, h) => acc + h.hits, 0);
+  const teamHR = hitterList.reduce((acc, h) => acc + h.hr, 0);
+  const teamBB = hitterList.reduce((acc, h) => acc + h.bb, 0);
+  const teamSO = hitterList.reduce((acc, h) => acc + h.so, 0);
+  const teamAVG = teamAB > 0 ? (teamHits / teamAB).toFixed(3).replace(/^0/, '') : '.000';
+
+  statsBar.innerHTML = `
+    <div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase">Team Batting AVG</div>
+      <div class="text-lg font-extrabold text-emerald-400">${teamAVG}</div>
+    </div>
+    <div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase">Total Hits</div>
+      <div class="text-lg font-extrabold text-slate-200">${teamHits}</div>
+    </div>
+    <div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase">Home Runs</div>
+      <div class="text-lg font-extrabold text-amber-400">${teamHR}</div>
+    </div>
+    <div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase">Walks (BB)</div>
+      <div class="text-lg font-extrabold text-slate-200">${teamBB}</div>
+    </div>
+    <div>
+      <div class="text-[10px] text-slate-500 font-bold uppercase">Strikeouts (K)</div>
+      <div class="text-lg font-extrabold text-rose-400">${teamSO}</div>
+    </div>
+  `;
+
+  // --- 3. RENDER CHEAT SHEET TABLE ---
+  tbody.innerHTML = '';
+  hitterList.forEach(h => {
+    let tendency = 'Balanced Field';
+    let approach = 'Standard approach; attack with first-pitch strike.';
+
+    if (h.so > h.bb * 2 && h.so >= 3) {
+      approach = 'High K-risk: Challenge upstairs with high heat; break off-speed down.';
+    } else if (h.bb > h.so && h.bb >= 3) {
+      approach = 'High Discipline: Avoid nibbling; fill up zone early.';
+    } else if (h.hr >= 1 || h.slgNum >= 0.500) {
+      approach = 'Power Bat: Keep ball down; avoid middle-in mistakes.';
+    }
+
+    if (h.spray && h.spray.length > 0) {
+      const pulls = h.spray.filter(s => (s.location || '').toLowerCase().includes('left')).length;
+      const pushes = h.spray.filter(s => (s.location || '').toLowerCase().includes('right')).length;
+      if (pulls > pushes + 1) tendency = 'Pull Heavy';
+      else if (pushes > pulls + 1) tendency = 'Opposite Field';
+    }
+
+    const tr = document.createElement('tr');
+    tr.className = "hover:bg-slate-950/60";
+    tr.innerHTML = `
+      <td class="p-2.5 font-bold text-amber-400">#${h.number}</td>
+      <td class="p-2.5 font-bold text-white">${h.name}</td>
+      <td class="p-2.5 text-slate-400">${h.pos}</td>
+      <td class="p-2.5 text-slate-400">${h.bats}/${h.throws}</td>
+      <td class="p-2.5 text-slate-200">${h.avg} / ${h.obp} / ${h.slg}</td>
+      <td class="p-2.5 text-slate-400">${h.bb} / ${h.so}</td>
+      <td class="p-2.5"><span class="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded">${tendency}</span></td>
+      <td class="p-2.5 text-slate-300 italic text-[11px]">${approach}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
