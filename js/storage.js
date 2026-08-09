@@ -4,6 +4,7 @@
  */
 
 const STORAGE_KEY = 'scouting_report_data_v1';
+const STORAGE_KEY_ACTIVE = 'scouting_active_opponent';
 
 /**
  * Default data structure if no saved data exists yet.
@@ -31,7 +32,7 @@ function loadAppData() {
   }
   try {
     data = JSON.parse(raw);
-    // Ensure roster arrays exist for legacy saved data
+    // Ensure roster and games arrays exist for legacy saved data
     Object.keys(data.opponents || {}).forEach(op => {
       if (!data.opponents[op].roster) data.opponents[op].roster = [];
       if (!data.opponents[op].games) data.opponents[op].games = [];
@@ -49,6 +50,66 @@ function loadAppData() {
 function saveAppData(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
+
+// --- OPPONENT MANAGEMENT FUNCTIONS ---
+
+/**
+ * Gets an array of all opponent team names.
+ */
+function getOpponents() {
+  const data = loadAppData();
+  return Object.keys(data.opponents || {});
+}
+
+/**
+ * Adds a new opponent team if it doesn't already exist.
+ */
+function addOpponent(name) {
+  if (!name || !name.trim()) return false;
+  const data = loadAppData();
+  const trimmedName = name.trim();
+
+  if (!data.opponents[trimmedName]) {
+    data.opponents[trimmedName] = { games: [], roster: [] };
+    saveAppData(data);
+    setActiveOpponent(trimmedName);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Deletes an opponent and all associated data.
+ */
+function deleteOpponent(name) {
+  const data = loadAppData();
+  if (data.opponents[name]) {
+    delete data.opponents[name];
+    saveAppData(data);
+    
+    // Clear active opponent if deleted
+    if (getActiveOpponent() === name) {
+      const remaining = getOpponents();
+      setActiveOpponent(remaining.length > 0 ? remaining[0] : '');
+    }
+  }
+}
+
+/**
+ * Gets currently active selected opponent.
+ */
+function getActiveOpponent() {
+  return localStorage.getItem(STORAGE_KEY_ACTIVE) || getOpponents()[0] || '';
+}
+
+/**
+ * Sets currently active selected opponent.
+ */
+function setActiveOpponent(name) {
+  localStorage.setItem(STORAGE_KEY_ACTIVE, name);
+}
+
+// --- GAME LOG FUNCTIONS ---
 
 /**
  * Retrieves saved games for a specific opponent.
@@ -154,7 +215,7 @@ function autoExtractAndAddRosterPlayers(opponentName, rawText) {
   const roster = data.opponents[opponentName].roster;
   const existingNames = new Set(roster.map(p => p.name.toLowerCase()));
 
-  // Quick scanner: looks for common GameChanger line patterns (e.g., "John Smith singled", "J. Smith pitched")
+  // Quick scanner: looks for common GameChanger line patterns
   const lines = rawText.split('\n');
   const foundNames = new Set();
 
@@ -164,7 +225,6 @@ function autoExtractAndAddRosterPlayers(opponentName, rawText) {
     let match;
     while ((match = namePattern.exec(line)) !== null) {
       const candidate = match[1].trim();
-      // Filter out non-player keywords common in PBP text
       const ignoreKeywords = ['Top Of', 'Bottom Of', 'Inning', 'Ball', 'Strike', 'Foul', 'In Play', 'GameChanger', 'Out', 'Single', 'Double', 'Triple', 'Home Run'];
       if (!ignoreKeywords.some(kw => candidate.toLowerCase().includes(kw.toLowerCase())) && candidate.length > 3) {
         foundNames.add(candidate);
