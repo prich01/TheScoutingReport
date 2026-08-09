@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Scouting Report</title>
-  <!-- Tailwind CSS CDN for styling -->
+  <!-- Tailwind CSS CDN for utility styling -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Custom CSS for tab navigation button states -->
+  <!-- Custom CSS for navigation button states -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex">
@@ -15,8 +15,8 @@
   <aside class="w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col gap-6 shrink-0 h-screen sticky top-0">
     
     <!-- App Branding & Team Title -->
-    <div>
-      <h1 class="text-xl font-black text-emerald-400 tracking-wider">THE SCOUTING REPORT</h1>
+    <div class="overflow-hidden">
+      <h1 class="text-lg font-extrabold text-emerald-400 tracking-tight whitespace-nowrap">THE SCOUTING REPORT</h1>
       <p id="myTeamDisplay" class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Team Command Center</p>
     </div>
 
@@ -33,26 +33,27 @@
       </div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <nav class="space-y-1 flex-1">
+    <!-- Navigation Tabs (Clean Vertical Stacking) -->
+    <nav class="flex flex-col gap-2 flex-1">
       <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn active">
-        📊 Dashboard
+        <span>📊</span> <span>Dashboard</span>
       </button>
       <button onclick="switchTab('uploading')" id="nav-uploading" class="nav-btn">
-        📥 Uploading
+        <span>📥</span> <span>Uploading</span>
       </button>
       <button onclick="switchTab('opponent')" id="nav-opponent" class="nav-btn">
-        🎯 Opponent Reports
+        <span>🎯</span> <span>Opponent Reports</span>
       </button>
       <button onclick="switchTab('self')" id="nav-self" class="nav-btn">
-        🛡️ Self Reports
+        <span>🛡️</span> <span>Self Reports</span>
       </button>
       <button onclick="switchTab('downloads')" id="nav-downloads" class="nav-btn">
-        🖨️ Downloads
+        <span>🖨️</span> <span>Downloads</span>
       </button>
     </nav>
 
-    <div class="text-[10px] text-slate-600 text-center">The Scouting Report v1.0</div>
+    <!-- Sidebar Footer -->
+    <div class="text-[10px] text-slate-600 text-center border-t border-slate-800/60 pt-3">The Scouting Report v1.0</div>
   </aside>
 
   <!-- MAIN CONTENT AREA -->
