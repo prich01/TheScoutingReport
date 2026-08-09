@@ -10,6 +10,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==========================================
+// HELPER UTILITIES
+// ==========================================
+
+/**
+ * Formats baseball Outs into standard Innings Pitched notation (e.g., 14 outs -> "4.2")
+ * @param {number} outs 
+ * @returns {string} Standard IP string
+ */
+function formatIP(outs = 0) {
+  const fullInnings = Math.floor(outs / 3);
+  const remOuts = outs % 3;
+  return `${fullInnings}.${remOuts}`;
+}
+
+// ==========================================
 // 1. NAVIGATION & TAB SWITCHING
 // ==========================================
 
@@ -50,26 +65,32 @@ function initOpponentDropdown() {
   const selectEl = document.getElementById('opponentSelect');
   if (!selectEl) return;
 
-  const opponents = getOpponents(); // Loaded from storage.js
+  let opponents = getOpponents() || []; // Loaded from storage.js
   selectEl.innerHTML = '';
 
   if (opponents.length === 0) {
     const defaultTeam = "Ridgeview High";
     addOpponentToStorage(defaultTeam);
-    opponents.push(defaultTeam);
+    opponents = [defaultTeam];
   }
+
+  // Preserve active opponent prior to rebuild
+  const active = getActiveOpponent();
 
   opponents.forEach(op => {
     const opt = document.createElement('option');
     opt.value = op;
     opt.textContent = op;
+    if (op === active) {
+      opt.selected = true;
+    }
     selectEl.appendChild(opt);
   });
 
-  const active = getActiveOpponent();
+  // Ensure dropdown selection aligns with active opponent
   if (active && opponents.includes(active)) {
     selectEl.value = active;
-  } else {
+  } else if (opponents.length > 0) {
     selectEl.value = opponents[0];
     setActiveOpponent(opponents[0]);
   }
@@ -85,7 +106,9 @@ function handleOpponentChange() {
   if (!selectEl) return;
 
   const selected = selectEl.value;
-  setActiveOpponent(selected);
+  if (selected) {
+    setActiveOpponent(selected);
+  }
 
   // Update UI subheaders
   const loadedGamesSub = document.getElementById('loadedGamesSubheader');
@@ -218,33 +241,35 @@ function handleSaveGameLog() {
   const parsed = parseGameLog(rawText, currentRoster);
 
   const rosterMap = {};
-  currentRoster.forEach(p => { rosterMap[p.name.toLowerCase()] = p; });
+  currentRoster.forEach(p => { rosterMap[p.name.trim().toLowerCase()] = p; });
 
   // Merge extracted hitters
   Object.values(parsed.hitters).forEach(h => {
-    if (!rosterMap[h.name.toLowerCase()]) {
+    const cleanNameKey = h.name.trim().toLowerCase();
+    if (!rosterMap[cleanNameKey]) {
       currentRoster.push({
-        name: h.name,
+        name: h.name.trim(),
         number: h.number !== '--' ? h.number : '00',
         bats: h.bats || 'R',
         throws: h.throws || 'R',
         pos: h.pos || 'UT'
       });
-      rosterMap[h.name.toLowerCase()] = true;
+      rosterMap[cleanNameKey] = true;
     }
   });
 
   // Merge extracted pitchers
   Object.values(parsed.pitchers).forEach(p => {
-    if (!rosterMap[p.name.toLowerCase()]) {
+    const cleanNameKey = p.name.trim().toLowerCase();
+    if (!rosterMap[cleanNameKey]) {
       currentRoster.push({
-        name: p.name,
+        name: p.name.trim(),
         number: p.number !== '--' ? p.number : '00',
         bats: 'R',
         throws: p.throws || 'R',
         pos: 'P'
       });
-      rosterMap[p.name.toLowerCase()] = true;
+      rosterMap[cleanNameKey] = true;
     }
   });
 
@@ -395,7 +420,7 @@ function generateSprayChartSvg(sprayList = []) {
   };
 
   let dotsSvg = '';
-  sprayList.forEach(item => {
+  sprayList.forEach((item, index) => {
     const locKey = item.location ? item.location.toLowerCase() : 'center field';
     let coords = locationCoordinates[locKey];
 
@@ -409,9 +434,11 @@ function generateSprayChartSvg(sprayList = []) {
       else coords = locationCoordinates['center field'];
     }
 
-    // Organic plot jitter
-    const offsetX = (Math.random() - 0.5) * 14;
-    const offsetY = (Math.random() - 0.5) * 14;
+    // Deterministic organic plot jitter using item properties and index
+    const seed = (item.type || '').length + (item.result || '').length + index;
+    const offsetX = (Math.sin(seed * 999) - 0.5) * 12;
+    const offsetY = (Math.cos(seed * 999) - 0.5) * 12;
+
     const cx = Math.max(15, Math.min(185, coords.x + offsetX));
     const cy = Math.max(15, Math.min(115, coords.y + offsetY));
 
@@ -524,9 +551,7 @@ function renderOpponentReport() {
   } else {
     pitcherContainer.innerHTML = '';
     pitcherList.forEach(p => {
-      const fullInnings = Math.floor(p.outs / 3);
-      const remOuts = p.outs % 3;
-      const ipDisplay = `${fullInnings}.${remOuts}`;
+      const ipDisplay = formatIP(p.outs);
       const ipDecimal = p.outs / 3;
       const whip = ipDecimal > 0 ? ((p.h + p.bb) / ipDecimal).toFixed(2) : '0.00';
       const kBbRatio = p.bb > 0 ? (p.so / p.bb).toFixed(1) : p.so.toFixed(1);
@@ -671,7 +696,7 @@ function renderDashboard() {
 
   if (games.length === 0) {
     calloutsGrid.innerHTML = `<div class="bg-slate-900 border border-slate-800 p-4 rounded-xl col-span-full text-center text-xs text-slate-500 italic">No game logs uploaded for ${activeOpponent} yet. Paste play-by-play text in the Uploading tab to view pre-game reports.</div>`;
-    statsBar.innerHTML = '';
+    if (statsBar) statsBar.innerHTML = '';
     tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-500 italic">No game log data available.</td></tr>`;
     return;
   }
@@ -779,7 +804,7 @@ function renderDashboard() {
         <span>${acePitcher ? acePitcher.name : 'N/A'}</span>
       </div>
       <div class="mt-3 flex justify-between text-xs border-t border-slate-800/80 pt-2 text-slate-400">
-        <span>IP: <strong class="text-sky-400">${acePitcher ? (acePitcher.outs / 3).toFixed(1) : '0.0'}</strong></span>
+        <span>IP: <strong class="text-sky-400">${acePitcher ? formatIP(acePitcher.outs) : '0.0'}</strong></span>
         <span>K: <strong class="text-emerald-400">${acePitcher ? acePitcher.so : 0}</strong></span>
         <span>BB: <strong class="text-rose-400">${acePitcher ? acePitcher.bb : 0}</strong></span>
       </div>
@@ -794,28 +819,30 @@ function renderDashboard() {
   const teamSO = hitterList.reduce((acc, h) => acc + h.so, 0);
   const teamAVG = teamAB > 0 ? (teamHits / teamAB).toFixed(3).replace(/^0/, '') : '.000';
 
-  statsBar.innerHTML = `
-    <div>
-      <div class="text-[10px] text-slate-500 font-bold uppercase">Team Batting AVG</div>
-      <div class="text-lg font-extrabold text-emerald-400">${teamAVG}</div>
-    </div>
-    <div>
-      <div class="text-[10px] text-slate-500 font-bold uppercase">Total Hits</div>
-      <div class="text-lg font-extrabold text-slate-200">${teamHits}</div>
-    </div>
-    <div>
-      <div class="text-[10px] text-slate-500 font-bold uppercase">Home Runs</div>
-      <div class="text-lg font-extrabold text-amber-400">${teamHR}</div>
-    </div>
-    <div>
-      <div class="text-[10px] text-slate-500 font-bold uppercase">Walks (BB)</div>
-      <div class="text-lg font-extrabold text-slate-200">${teamBB}</div>
-    </div>
-    <div>
-      <div class="text-[10px] text-slate-500 font-bold uppercase">Strikeouts (K)</div>
-      <div class="text-lg font-extrabold text-rose-400">${teamSO}</div>
-    </div>
-  `;
+  if (statsBar) {
+    statsBar.innerHTML = `
+      <div>
+        <div class="text-[10px] text-slate-500 font-bold uppercase">Team Batting AVG</div>
+        <div class="text-lg font-extrabold text-emerald-400">${teamAVG}</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-500 font-bold uppercase">Total Hits</div>
+        <div class="text-lg font-extrabold text-slate-200">${teamHits}</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-500 font-bold uppercase">Home Runs</div>
+        <div class="text-lg font-extrabold text-amber-400">${teamHR}</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-500 font-bold uppercase">Walks (BB)</div>
+        <div class="text-lg font-extrabold text-slate-200">${teamBB}</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-500 font-bold uppercase">Strikeouts (K)</div>
+        <div class="text-lg font-extrabold text-rose-400">${teamSO}</div>
+      </div>
+    `;
+  }
 
   // --- 3. RENDER CHEAT SHEET TABLE ---
   tbody.innerHTML = '';
