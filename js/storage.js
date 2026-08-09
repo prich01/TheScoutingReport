@@ -64,7 +64,7 @@ function getOpponents() {
 /**
  * Adds a new opponent team if it doesn't already exist.
  */
-function addOpponent(name) {
+function addOpponentToStorage(name) {
   if (!name || !name.trim()) return false;
   const data = loadAppData();
   const trimmedName = name.trim();
@@ -72,7 +72,23 @@ function addOpponent(name) {
   if (!data.opponents[trimmedName]) {
     data.opponents[trimmedName] = { games: [], roster: [] };
     saveAppData(data);
-    setActiveOpponent(trimmedName);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Renames an existing opponent team and moves all associated games and roster data.
+ */
+function renameOpponentInStorage(oldName, newName) {
+  if (!oldName || !newName || !newName.trim() || oldName === newName) return false;
+  const data = loadAppData();
+  const trimmedNew = newName.trim();
+
+  if (data.opponents[oldName] && !data.opponents[trimmedNew]) {
+    data.opponents[trimmedNew] = data.opponents[oldName];
+    delete data.opponents[oldName];
+    saveAppData(data);
     return true;
   }
   return false;
@@ -120,9 +136,9 @@ function getOpponentGames(opponentName) {
 }
 
 /**
- * Saves a new raw GameChanger log to an opponent's history.
+ * Saves a game object to an opponent's history.
  */
-function saveGameLog(opponentName, gameMetadata, rawText) {
+function saveGameLog(opponentName, gameObj) {
   const data = loadAppData();
 
   if (!data.opponents[opponentName]) {
@@ -130,19 +146,15 @@ function saveGameLog(opponentName, gameMetadata, rawText) {
   }
 
   const newGame = {
-    id: 'game_' + Date.now(),
-    date: gameMetadata.date || new Date().toISOString().split('T')[0],
-    notes: gameMetadata.notes || 'Regular Season Game',
-    rawText: rawText,
+    id: gameObj.id || ('game_' + Date.now()),
+    date: gameObj.date || new Date().toISOString().split('T')[0],
+    notes: gameObj.notes || 'Regular Season Game',
+    rawText: gameObj.rawText || '',
     timestamp: new Date().toISOString()
   };
 
   data.opponents[opponentName].games.push(newGame);
   saveAppData(data);
-
-  // Auto-scan raw log for player names and add missing ones to roster
-  autoExtractAndAddRosterPlayers(opponentName, rawText);
-
   return newGame;
 }
 
@@ -168,81 +180,13 @@ function getOpponentRoster(opponentName) {
 }
 
 /**
- * Updates or adds a specific player in an opponent's roster.
+ * Replaces or saves the entire roster array for an opponent.
  */
-function updateRosterPlayer(opponentName, playerName, updatedFields) {
+function saveOpponentRoster(opponentName, rosterArray) {
   const data = loadAppData();
-  if (!data.opponents[opponentName]) return;
-
-  const roster = data.opponents[opponentName].roster;
-  const existingIdx = roster.findIndex(p => p.name.toLowerCase() === playerName.toLowerCase());
-
-  if (existingIdx !== -1) {
-    roster[existingIdx] = { ...roster[existingIdx], ...updatedFields };
-  } else {
-    roster.push({
-      name: playerName,
-      number: updatedFields.number || '',
-      bats: updatedFields.bats || 'R',
-      throws: updatedFields.throws || 'R',
-      pos: updatedFields.pos || 'UT'
-    });
+  if (!data.opponents[opponentName]) {
+    data.opponents[opponentName] = { games: [], roster: [] };
   }
-
-  saveAppData(data);
-}
-
-/**
- * Removes a player from the roster.
- */
-function deleteRosterPlayer(opponentName, playerName) {
-  const data = loadAppData();
-  if (data.opponents[opponentName]) {
-    data.opponents[opponentName].roster = data.opponents[opponentName].roster.filter(
-      p => p.name.toLowerCase() !== playerName.toLowerCase()
-    );
-    saveAppData(data);
-  }
-}
-
-/**
- * Basic scanner that extracts candidate player names from GameChanger logs and adds them if missing.
- */
-function autoExtractAndAddRosterPlayers(opponentName, rawText) {
-  const data = loadAppData();
-  if (!data.opponents[opponentName]) return;
-
-  const roster = data.opponents[opponentName].roster;
-  const existingNames = new Set(roster.map(p => p.name.toLowerCase()));
-
-  // Quick scanner: looks for common GameChanger line patterns
-  const lines = rawText.split('\n');
-  const foundNames = new Set();
-
-  const namePattern = /([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)/g;
-
-  lines.forEach(line => {
-    let match;
-    while ((match = namePattern.exec(line)) !== null) {
-      const candidate = match[1].trim();
-      const ignoreKeywords = ['Top Of', 'Bottom Of', 'Inning', 'Ball', 'Strike', 'Foul', 'In Play', 'GameChanger', 'Out', 'Single', 'Double', 'Triple', 'Home Run'];
-      if (!ignoreKeywords.some(kw => candidate.toLowerCase().includes(kw.toLowerCase())) && candidate.length > 3) {
-        foundNames.add(candidate);
-      }
-    }
-  });
-
-  foundNames.forEach(name => {
-    if (!existingNames.has(name.toLowerCase())) {
-      roster.push({
-        name: name,
-        number: '',
-        bats: 'R',
-        throws: 'R',
-        pos: 'UT'
-      });
-    }
-  });
-
+  data.opponents[opponentName].roster = rosterArray;
   saveAppData(data);
 }
