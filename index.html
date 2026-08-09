@@ -151,20 +151,37 @@
     </section>
 
     <!-- View 3: Opponent Reports -->
-    <section id="view-opponent" class="tab-view hidden space-y-6">
+    <section id="view-opponent" class="tab-view hidden space-y-8">
       <div class="flex justify-between items-center border-b border-slate-800 pb-4">
         <div>
           <h2 class="text-2xl font-bold text-white">Opponent Scouting Reports</h2>
-          <p id="opponentReportSubheader" class="text-xs text-slate-400 mt-1">Aggregated hitting tendencies and spray charts from all saved game logs.</p>
+          <p id="opponentReportSubheader" class="text-xs text-slate-400 mt-1">Aggregated pitching and hitting scouting data from saved game logs.</p>
         </div>
         <button onclick="renderOpponentReport()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded border border-slate-700 font-semibold flex items-center gap-1.5">
-          <span>🔄</span> <span>Refresh Data</span>
+          <span>🔄</span> <span>Refresh Reports</span>
         </button>
       </div>
 
-      <!-- Hitters Grid -->
-      <div id="hitterCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <p class="text-xs text-slate-500 italic col-span-full">No game data parsed yet. Select an opponent with saved games or upload logs in the Uploading tab.</p>
+      <!-- Section 1: Pitching Staff -->
+      <div class="space-y-4">
+        <div class="flex items-center gap-2 border-b border-slate-800/80 pb-2">
+          <span class="text-lg">⚾</span>
+          <h3 class="text-base font-bold text-slate-200 uppercase tracking-wider">Pitching Staff Scouting</h3>
+        </div>
+        <div id="pitcherCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <p class="text-xs text-slate-500 italic col-span-full">No pitching data detected in game logs yet.</p>
+        </div>
+      </div>
+
+      <!-- Section 2: Lineup & Spray Charts -->
+      <div class="space-y-4 pt-2">
+        <div class="flex items-center gap-2 border-b border-slate-800/80 pb-2">
+          <span class="text-lg">🎯</span>
+          <h3 class="text-base font-bold text-slate-200 uppercase tracking-wider">Lineup & Hitting Spray Charts</h3>
+        </div>
+        <div id="hitterCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <p class="text-xs text-slate-500 italic col-span-full">No hitter data parsed yet. Upload logs in the Uploading tab.</p>
+        </div>
       </div>
     </section>
 
