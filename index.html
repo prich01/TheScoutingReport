@@ -188,27 +188,31 @@
               Paste New Game Log
             </h3>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Game Date</label>
                 <input type="date" id="gameDateInput" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
               </div>
               <div>
-                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Notes / Opponent Context</label>
-                <input type="text" id="gameNotesInput" placeholder="e.g. Regular Season Game 4" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Notes / Opponent</label>
+                <input type="text" id="gameNotesInput" placeholder="e.g. Game 4 vs Tigers" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Gemini API Key</label>
+                <input type="password" id="apiKeyInput" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
               </div>
             </div>
 
             <div>
               <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Play-by-Play Text</label>
-              <textarea id="pbpInput" rows="7" placeholder="Paste play-by-play text here from Game Changer..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500"></textarea>
+              <textarea id="gameLogInput" rows="7" placeholder="Paste play-by-play text here from GameChanger..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500"></textarea>
             </div>
 
             <div class="flex items-center justify-between">
-              <button onclick="handleSaveGameLog()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-lg">
+              <button id="processBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-lg flex items-center gap-2">
                 Process & Save Game Log
               </button>
-              <span id="uploadStatus" class="text-xs font-semibold text-emerald-400"></span>
+              <span id="statusText" class="text-xs font-semibold text-emerald-400"></span>
             </div>
           </div>
 
