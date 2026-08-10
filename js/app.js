@@ -1,42 +1,195 @@
 /**
- * GameChanger Play-by-Play Dashboard (app.js)
- * Powered by Gemini API for Structured Extraction
+ * The Scouting Report - Complete Application Logic (app.js)
  */
 
+// Application State
+let appState = {
+  opponents: ['Opponent Team A'],
+  activeOpponent: 'Opponent Team A',
+  rosters: {}, // { 'Opponent Team A': [ { number: '12', name: 'John Doe', bats: 'R', throws: 'R', pos: 'SS' } ] }
+  gameLogs: {}  // { 'Opponent Team A': [ parsedGameLogObj1, ... ] }
+};
+
+// Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  // Restore saved API Key if present
-  const savedApiKey = localStorage.getItem('gemini_api_key');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  if (apiKeyInput && savedApiKey) {
-    apiKeyInput.value = savedApiKey;
-  }
-
-  // Bind Process Button
-  const processBtn = document.getElementById('processBtn');
-  if (processBtn) {
-    processBtn.addEventListener('click', handleProcessGameLog);
-  }
-
-  // Load existing cached scouting data on startup if available
-  const existingData = localStorage.getItem('scoutingData');
-  if (existingData) {
-    try {
-      renderDashboard(JSON.parse(existingData));
-    } catch (e) {
-      console.warn("Could not render cached scouting data on startup.", e);
-    }
-  }
+  loadStateFromStorage();
+  initUI();
+  switchTab('uploading'); // Default view
 });
 
-/**
- * Main Processing Handler
- */
+/* ==========================================
+ * NAVIGATION & TAB SWITCHING
+ * ========================================== */
+function switchTab(tabId) {
+  // Hide all tab views
+  const views = document.querySelectorAll('.tab-view');
+  views.forEach(view => view.classList.add('hidden'));
+
+  // Show selected tab
+  const targetView = document.getElementById(`view-${tabId}`);
+  if (targetView) {
+    targetView.classList.remove('hidden');
+  }
+
+  // Update Nav Button active styles
+  const navBtns = document.querySelectorAll('.nav-btn');
+  navBtns.forEach(btn => {
+    btn.classList.remove('bg-slate-800', 'text-white');
+    btn.classList.add('text-slate-400');
+  });
+
+  const activeBtn = document.getElementById(`nav-${tabId}`);
+  if (activeBtn) {
+    activeBtn.classList.add('bg-slate-800', 'text-white');
+    activeBtn.classList.remove('text-slate-400');
+  }
+}
+
+/* ==========================================
+ * OPPONENT MANAGEMENT
+ * ========================================== */
+function populateOpponentDropdown() {
+  const select = document.getElementById('opponentSelect');
+  if (!select) return;
+
+  select.innerHTML = '';
+  appState.opponents.forEach(opp => {
+    const opt = document.createElement('option');
+    opt.value = opp;
+    opt.textContent = opp;
+    if (opp === appState.activeOpponent) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  // Update headers across tabs
+  const dashName = document.getElementById('dashOpponentName');
+  if (dashName) dashName.textContent = appState.activeOpponent;
+
+  renderRoster();
+  renderSavedGames();
+}
+
+function handleOpponentChange() {
+  const select = document.getElementById('opponentSelect');
+  if (select) {
+    appState.activeOpponent = select.value;
+    saveStateToStorage();
+    populateOpponentDropdown();
+  }
+}
+
+function addOpponent() {
+  const name = prompt("Enter new opponent team name:");
+  if (!name || !name.trim()) return;
+
+  const cleanName = name.trim();
+  if (!appState.opponents.includes(cleanName)) {
+    appState.opponents.push(cleanName);
+  }
+  appState.activeOpponent = cleanName;
+  saveStateToStorage();
+  populateOpponentDropdown();
+}
+
+function renameOpponent() {
+  const oldName = appState.activeOpponent;
+  const newName = prompt(`Rename "${oldName}" to:`, oldName);
+  if (!newName || !newName.trim() || newName === oldName) return;
+
+  const cleanName = newName.trim();
+  const index = appState.opponents.indexOf(oldName);
+  if (index !== -1) {
+    appState.opponents[index] = cleanName;
+  }
+
+  // Migrate roster and logs to new key
+  if (appState.rosters[oldName]) {
+    appState.rosters[cleanName] = appState.rosters[oldName];
+    delete appState.rosters[oldName];
+  }
+  if (appState.gameLogs[oldName]) {
+    appState.gameLogs[cleanName] = appState.gameLogs[oldName];
+    delete appState.gameLogs[oldName];
+  }
+
+  appState.activeOpponent = cleanName;
+  saveStateToStorage();
+  populateOpponentDropdown();
+}
+
+/* ==========================================
+ * ROSTER MANAGEMENT
+ * ========================================== */
+function renderRoster() {
+  const tbody = document.getElementById('rosterTableBody');
+  if (!tbody) return;
+
+  const currentRoster = appState.rosters[appState.activeOpponent] || [];
+  tbody.innerHTML = '';
+
+  if (currentRoster.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500 italic">No players on roster yet. Process a game log or add players manually.</td></tr>`;
+    return;
+  }
+
+  currentRoster.forEach((player, idx) => {
+    const tr = document.createElement('tr');
+    tr.className = "border-b border-slate-800/50 hover:bg-slate-800/30";
+    tr.innerHTML = `
+      <td class="p-1.5 font-bold text-slate-300">#${player.number || '--'}</td>
+      <td class="p-1.5 font-semibold text-white">${player.name}</td>
+      <td class="p-1.5 text-slate-400">${player.bats || '-'}</td>
+      <td class="p-1.5 text-slate-400">${player.throws || '-'}</td>
+      <td class="p-1.5 text-slate-400">${player.pos || '-'}</td>
+      <td class="p-1.5 text-center">
+        <button onclick="removePlayer(${idx})" class="text-rose-400 hover:text-rose-300 font-bold">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function handleManualAddPlayer() {
+  const name = prompt("Player Name:");
+  if (!name || !name.trim()) return;
+
+  const number = prompt("Jersey Number:") || "";
+  const bats = prompt("Bats (R/L/S):") || "R";
+  const throwsHand = prompt("Throws (R/L):") || "R";
+  const pos = prompt("Primary Position:") || "";
+
+  if (!appState.rosters[appState.activeOpponent]) {
+    appState.rosters[appState.activeOpponent] = [];
+  }
+
+  appState.rosters[appState.activeOpponent].push({
+    name: name.trim(),
+    number: number.trim(),
+    bats: bats.toUpperCase().trim(),
+    throws: throwsHand.toUpperCase().trim(),
+    pos: pos.toUpperCase().trim()
+  });
+
+  saveStateToStorage();
+  renderRoster();
+}
+
+function removePlayer(index) {
+  if (appState.rosters[appState.activeOpponent]) {
+    appState.rosters[appState.activeOpponent].splice(index, 1);
+    saveStateToStorage();
+    renderRoster();
+  }
+}
+
+/* ==========================================
+ * GEMINI GAME LOG PROCESSING
+ * ========================================== */
 async function handleProcessGameLog() {
-  const statusEl = document.getElementById('statusText') || { innerText: () => {} };
+  const statusEl = document.getElementById('statusText');
   const rawText = document.getElementById('gameLogInput')?.value || '';
-  
-  // 1. Get API Key from input or localStorage
   let apiKey = document.getElementById('apiKeyInput')?.value.trim();
+
   if (!apiKey) {
     apiKey = localStorage.getItem('gemini_api_key');
   }
@@ -60,42 +213,45 @@ async function handleProcessGameLog() {
     return;
   }
 
-  // Save API key locally so user doesn't have to re-enter it every time
   localStorage.setItem('gemini_api_key', apiKey);
-
-  // Update Status UI
-  statusEl.innerText = " Analyzing game log with Gemini...";
+  if (statusEl) statusEl.innerText = " Analyzing game log with Gemini...";
 
   try {
-    // 2. Call Gemini API
     const parsedData = await parseGameLogWithGemini(rawText, apiKey);
 
-    if (!parsedData) {
-      throw new Error("Gemini returned invalid or empty data.");
+    if (!parsedData) throw new Error("Gemini returned invalid or empty data.");
+
+    // Store log under current opponent
+    if (!appState.gameLogs[appState.activeOpponent]) {
+      appState.gameLogs[appState.activeOpponent] = [];
     }
+    
+    const gameDate = document.getElementById('gameDateInput')?.value || new Date().toISOString().split('T')[0];
+    const gameNotes = document.getElementById('gameNotesInput')?.value || 'Game Log';
 
-    console.log("=== GEMINI PARSED SUCCESS ===", parsedData);
+    appState.gameLogs[appState.activeOpponent].push({
+      date: gameDate,
+      notes: gameNotes,
+      data: parsedData
+    });
 
-    // 3. Save clean output state
-    localStorage.setItem('scoutingData', JSON.stringify(parsedData));
+    // Auto-update roster from parsed hitters/pitchers
+    updateRosterFromParsedData(parsedData);
 
-    // 4. Update UI Dashboard
+    saveStateToStorage();
+    renderSavedGames();
     renderDashboard(parsedData);
 
-    statusEl.innerText = " Game log processed and saved successfully!";
+    if (statusEl) statusEl.innerText = " Game log processed and saved successfully!";
 
   } catch (error) {
     console.error("Processing Error:", error);
-    statusEl.innerText = " Error processing game log. Check console for details.";
-    alert("Failed to process game log. Make sure your API key is valid and check the browser console (F12).");
+    if (statusEl) statusEl.innerText = " Error processing game log.";
+    alert("Failed to process game log. Check your API key and browser console (F12).");
   }
 }
 
-/**
- * Gemini API Request Wrapper
- */
 async function parseGameLogWithGemini(rawText, apiKey) {
-  // Using gemini-2.5-flash for maximum speed and structured reliability
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const promptText = `
@@ -142,22 +298,13 @@ RAW PLAY-BY-PLAY LOG:
 ${rawText}
   `;
 
-  const requestBody = {
-    contents: [
-      {
-        parts: [{ text: promptText }]
-      }
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.1 // Low temperature for high precision
-    }
-  };
-
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody)
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: promptText }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
+    })
   });
 
   if (!response.ok) {
@@ -167,24 +314,105 @@ ${rawText}
 
   const data = await response.json();
   const rawJsonResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!rawJsonResponse) {
-    throw new Error("No text response generated from Gemini.");
-  }
-
   return JSON.parse(rawJsonResponse);
 }
 
-/**
- * Placeholder/Existing Render Bridge Function
- * (Ensure this connects to your actual UI rendering logic)
- */
-function renderDashboard(data) {
-  if (!data) return;
-  console.log("Rendering Dashboard with data:", data);
-  
-  // If your existing app uses custom update functions, trigger them here:
-  if (typeof updateHittersUI === 'function') updateHittersUI(data.hitters);
-  if (typeof updatePitchersUI === 'function') updatePitchersUI(data.pitchers);
-  if (typeof updateSprayChart === 'function') updateSprayChart(data.hitters);
+function updateRosterFromParsedData(parsedData) {
+  if (!appState.rosters[appState.activeOpponent]) {
+    appState.rosters[appState.activeOpponent] = [];
+  }
+  const roster = appState.rosters[appState.activeOpponent];
+
+  if (parsedData.hitters) {
+    Object.values(parsedData.hitters).forEach(hitter => {
+      if (!roster.some(p => p.name.toLowerCase() === hitter.name.toLowerCase())) {
+        roster.push({
+          name: hitter.name,
+          number: hitter.number || '',
+          bats: 'R',
+          throws: 'R',
+          pos: 'DH'
+        });
+      }
+    });
+  }
+  renderRoster();
+}
+
+function renderSavedGames() {
+  const container = document.getElementById('gamesListContainer');
+  if (!container) return;
+
+  const logs = appState.gameLogs[appState.activeOpponent] || [];
+  container.innerHTML = '';
+
+  if (logs.length === 0) {
+    container.innerHTML = `<p class="text-xs text-slate-500 italic">No saved game logs for ${appState.activeOpponent}.</p>`;
+    return;
+  }
+
+  logs.forEach((log, idx) => {
+    const div = document.createElement('div');
+    div.className = "bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center text-xs";
+    div.innerHTML = `
+      <div>
+        <span class="font-bold text-white">${log.date}</span>
+        <span class="text-slate-400 ml-2">${log.notes}</span>
+      </div>
+      <button onclick="deleteGameLog(${idx})" class="text-rose-400 hover:text-rose-300 font-bold px-2">Delete</button>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function deleteGameLog(idx) {
+  if (appState.gameLogs[appState.activeOpponent]) {
+    appState.gameLogs[appState.activeOpponent].splice(idx, 1);
+    saveStateToStorage();
+    renderSavedGames();
+  }
+}
+
+/* ==========================================
+ * DASHBOARD RENDERING
+ * ========================================== */
+function renderDashboard(parsedData) {
+  console.log("Dashboard updating with parsed data:", parsedData);
+  const badge = document.getElementById('dashGameCountBadge');
+  if (badge) {
+    const count = (appState.gameLogs[appState.activeOpponent] || []).length;
+    badge.textContent = `${count} Game${count === 1 ? '' : 's'} Tracked`;
+  }
+}
+
+/* ==========================================
+ * STORAGE HELPERS
+ * ========================================== */
+function saveStateToStorage() {
+  localStorage.setItem('scouting_app_state', JSON.stringify(appState));
+}
+
+function loadStateFromStorage() {
+  const saved = localStorage.getItem('scouting_app_state');
+  if (saved) {
+    try {
+      appState = JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to parse saved state", e);
+    }
+  }
+
+  const savedApiKey = localStorage.getItem('gemini_api_key');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  if (apiKeyInput && savedApiKey) {
+    apiKeyInput.value = savedApiKey;
+  }
+}
+
+function initUI() {
+  populateOpponentDropdown();
+  const processBtn = document.getElementById('processBtn');
+  if (processBtn) {
+    processBtn.addEventListener('click', handleProcessGameLog);
+  }
 }
