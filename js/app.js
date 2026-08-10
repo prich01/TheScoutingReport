@@ -252,7 +252,7 @@ async function handleProcessGameLog() {
 }
 
 async function parseGameLogWithGemini(rawText, apiKey) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const promptText = `
 You are an expert baseball play-by-play data analyst.
