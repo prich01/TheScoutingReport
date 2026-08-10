@@ -7,7 +7,7 @@ let appState = {
   opponents: ['Opponent Team A'],
   activeOpponent: 'Opponent Team A',
   rosters: {}, // { 'Opponent Team A': [ { number: '12', name: 'John Doe', bats: 'R', throws: 'R', pos: 'SS' } ] }
-  gameLogs: {}  // { 'Opponent Team A': [ parsedGameLogObj1, ... ] }
+  gameLogs: {}  // { 'Opponent Team A': [ { date, notes, data }, ... ] }
 };
 
 // Initialize app when DOM is ready
@@ -67,6 +67,7 @@ function populateOpponentDropdown() {
 
   renderRoster();
   renderSavedGames();
+  renderDashboard();
 }
 
 function handleOpponentChange() {
@@ -240,19 +241,21 @@ async function handleProcessGameLog() {
 
     saveStateToStorage();
     renderSavedGames();
-    renderDashboard(parsedData);
+    renderDashboard();
 
     if (statusEl) statusEl.innerText = " Game log processed and saved successfully!";
 
   } catch (error) {
     console.error("Processing Error:", error);
     if (statusEl) statusEl.innerText = " Error processing game log.";
-    alert("Failed to process game log. Check your API key and browser console (F12).");
+    alert(`Failed to process game log: ${error.message}`);
   }
 }
 
 async function parseGameLogWithGemini(rawText, apiKey) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+  // Candidate endpoints with fallbacks
+  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  let lastError = null;
 
   const promptText = `
 You are an expert baseball play-by-play data analyst.
@@ -298,23 +301,31 @@ RAW PLAY-BY-PLAY LOG:
 ${rawText}
   `;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: promptText }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
-    })
-  });
+  for (const model of models) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
+        })
+      });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API Error (${response.status}): ${errText}`);
+      if (response.ok) {
+        const data = await response.json();
+        const rawJsonResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawJsonResponse) return JSON.parse(rawJsonResponse);
+      } else {
+        lastError = await response.text();
+      }
+    } catch (err) {
+      lastError = err.message;
+    }
   }
 
-  const data = await response.json();
-  const rawJsonResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  return JSON.parse(rawJsonResponse);
+  throw new Error(`Gemini API Error: ${lastError}`);
 }
 
 function updateRosterFromParsedData(parsedData) {
@@ -370,18 +381,73 @@ function deleteGameLog(idx) {
     appState.gameLogs[appState.activeOpponent].splice(idx, 1);
     saveStateToStorage();
     renderSavedGames();
+    renderDashboard();
   }
 }
 
 /* ==========================================
- * DASHBOARD RENDERING
+ * DASHBOARD & STAT AGGREGATION RENDERING
  * ========================================== */
-function renderDashboard(parsedData) {
-  console.log("Dashboard updating with parsed data:", parsedData);
+function renderDashboard() {
+  const logs = appState.gameLogs[appState.activeOpponent] || [];
+  
+  // Update Game Count Badge
   const badge = document.getElementById('dashGameCountBadge');
   if (badge) {
-    const count = (appState.gameLogs[appState.activeOpponent] || []).length;
-    badge.textContent = `${count} Game${count === 1 ? '' : 's'} Tracked`;
+    badge.textContent = `${logs.length} Game${logs.length === 1 ? '' : 's'} Tracked`;
+  }
+
+  // Aggregate stats across all saved games
+  const aggregatedHitters = {};
+  logs.forEach(log => {
+    const hitters = log.data?.hitters || {};
+    Object.values(hitters).forEach(h => {
+      if (!aggregatedHitters[h.name]) {
+        aggregatedHitters[h.name] = {
+          name: h.name, pa: 0, ab: 0, hits: 0, singles: 0, doubles: 0, triples: 0, hr: 0, bb: 0, so: 0, hbp: 0
+        };
+      }
+      const agg = aggregatedHitters[h.name];
+      agg.pa += h.pa || 0;
+      agg.ab += h.ab || 0;
+      agg.hits += h.hits || 0;
+      agg.singles += h.singles || 0;
+      agg.doubles += h.doubles || 0;
+      agg.triples += h.triples || 0;
+      agg.hr += h.hr || 0;
+      agg.bb += h.bb || 0;
+      agg.so += h.so || 0;
+      agg.hbp += h.hbp || 0;
+    });
+  });
+
+  // Render stats table on Dashboard (if container exists)
+  const statsTableBody = document.getElementById('dashboardStatsTableBody');
+  if (statsTableBody) {
+    statsTableBody.innerHTML = '';
+    const sortedHitters = Object.values(aggregatedHitters).sort((a, b) => b.pa - a.pa);
+    
+    if (sortedHitters.length === 0) {
+      statsTableBody.innerHTML = `<tr><td colspan="8" class="p-3 text-center text-slate-500 italic">No game data parsed yet.</td></tr>`;
+      return;
+    }
+
+    sortedHitters.forEach(h => {
+      const avg = h.ab > 0 ? (h.hits / h.ab).toFixed(3).replace(/^0/, '') : '.000';
+      const tr = document.createElement('tr');
+      tr.className = "border-b border-slate-800/50 hover:bg-slate-800/30 text-xs";
+      tr.innerHTML = `
+        <td class="p-2 font-semibold text-white">${h.name}</td>
+        <td class="p-2 text-slate-300">${h.pa}</td>
+        <td class="p-2 text-slate-300">${h.ab}</td>
+        <td class="p-2 text-emerald-400 font-bold">${h.hits}</td>
+        <td class="p-2 text-slate-300">${h.hr}</td>
+        <td class="p-2 text-slate-300">${h.bb}</td>
+        <td class="p-2 text-slate-300">${h.so}</td>
+        <td class="p-2 text-amber-400 font-bold">${avg}</td>
+      `;
+      statsTableBody.appendChild(tr);
+    });
   }
 }
 
