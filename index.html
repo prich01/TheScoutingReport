@@ -205,14 +205,17 @@
 
             <div>
               <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Play-by-Play Text</label>
-              <textarea id="gameLogInput" rows="7" placeholder="Paste play-by-play text here from GameChanger..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500"></textarea>
+              <!-- Fixed ID to pbpInput -->
+              <textarea id="pbpInput" rows="7" placeholder="Paste play-by-play text here from GameChanger..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500"></textarea>
             </div>
 
             <div class="flex items-center justify-between">
-              <button id="processBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-lg flex items-center gap-2">
+              <!-- Added onclick handler -->
+              <button id="processBtn" onclick="handleSaveGameLog()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-lg flex items-center gap-2">
                 Process & Save Game Log
               </button>
-              <span id="statusText" class="text-xs font-semibold text-emerald-400"></span>
+              <!-- Fixed ID to uploadStatus -->
+              <span id="uploadStatus" class="text-xs font-semibold text-emerald-400"></span>
             </div>
           </div>
 
