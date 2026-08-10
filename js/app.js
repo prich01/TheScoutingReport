@@ -211,7 +211,7 @@ function renderGamesList(opponentName) {
  * Calls Gemini API to parse GameChanger play-by-play log into structured JSON
  */
 async function parseGameLogWithGemini(rawText, apiKey) {
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const models = ['gemini-3.6-flash', 'gemini-2.5-flash'];
   let lastError = null;
 
   const promptText = `
