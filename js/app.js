@@ -24,6 +24,60 @@ function formatIP(outs = 0) {
   return `${fullInnings}.${remOuts}`;
 }
 
+/**
+ * Safely extracts a flat array of player objects regardless of whether Gemini 
+ * returned an Array, a Name Map, or Team-Nested Objects.
+ * @param {Object|Array} dataSection - parsedData.hitters or parsedData.pitchers
+ * @param {string} targetTeam - Optional team name to filter by
+ * @returns {Array} Clean array of player objects
+ */
+function normalizePlayerList(dataSection, targetTeam = null) {
+  if (!dataSection) return [];
+  let list = [];
+
+  if (Array.isArray(dataSection)) {
+    list = [...dataSection];
+  } else if (typeof dataSection === 'object') {
+    Object.keys(dataSection).forEach(key => {
+      const val = dataSection[key];
+      if (Array.isArray(val)) {
+        // Nested team array e.g. { "Oak Ridge": [...] }
+        if (!targetTeam || key.toLowerCase().includes(targetTeam.toLowerCase()) || targetTeam.toLowerCase().includes(key.toLowerCase())) {
+          list.push(...val);
+        }
+      } else if (val && typeof val === 'object') {
+        if (val.name || val.playerName) {
+          // Standard map: { "Player Name": { name: "..." } }
+          list.push(val);
+        } else {
+          // Nested team map e.g. { "Oak Ridge": { "Player 1": {...} } }
+          if (!targetTeam || key.toLowerCase().includes(targetTeam.toLowerCase()) || targetTeam.toLowerCase().includes(key.toLowerCase())) {
+            list.push(...Object.values(val));
+          }
+        }
+      }
+    });
+  }
+
+  // Sanitize player names
+  const sanitized = list.map(p => {
+    if (!p) return null;
+    const name = p.name || p.playerName || 'Unknown Player';
+    return { ...p, name: name.trim() };
+  }).filter(Boolean);
+
+  // Filter by team if team property exists and targetTeam specified
+  if (targetTeam && sanitized.length > 0) {
+    const filtered = sanitized.filter(p => {
+      if (!p.team) return true; // Include if team is unassigned
+      return p.team.toLowerCase().includes(targetTeam.toLowerCase()) || targetTeam.toLowerCase().includes(p.team.toLowerCase());
+    });
+    if (filtered.length > 0) return filtered;
+  }
+
+  return sanitized;
+}
+
 // ==========================================
 // 1. NAVIGATION & TAB SWITCHING
 // ==========================================
@@ -33,9 +87,7 @@ function formatIP(outs = 0) {
  * @param {string} tabId - Identifier for tab ('dashboard', 'uploading', 'opponent', 'self', 'downloads')
  */
 function switchTab(tabId) {
-  // Hide all views
   document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
-  // Deactivate all nav buttons
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
 
   const targetView = document.getElementById(`view-${tabId}`);
@@ -44,7 +96,6 @@ function switchTab(tabId) {
   if (targetView) targetView.classList.remove('hidden');
   if (targetNav) targetNav.classList.add('active');
 
-  // Trigger view updates
   if (tabId === 'dashboard') {
     renderDashboard();
   } else if (tabId === 'opponent') {
@@ -65,29 +116,25 @@ function initOpponentDropdown() {
   const selectEl = document.getElementById('opponentSelect');
   if (!selectEl) return;
 
-  let opponents = getOpponents() || []; // Loaded from storage.js
+  let opponents = getOpponents() || [];
   selectEl.innerHTML = '';
 
   if (opponents.length === 0) {
-    const defaultTeam = "Ridgeview High";
+    const defaultTeam = "Oak Ridge";
     addOpponentToStorage(defaultTeam);
     opponents = [defaultTeam];
   }
 
-  // Preserve active opponent prior to rebuild
   const active = getActiveOpponent();
 
   opponents.forEach(op => {
     const opt = document.createElement('option');
     opt.value = op;
     opt.textContent = op;
-    if (op === active) {
-      opt.selected = true;
-    }
+    if (op === active) opt.selected = true;
     selectEl.appendChild(opt);
   });
 
-  // Ensure dropdown selection aligns with active opponent
   if (active && opponents.includes(active)) {
     selectEl.value = active;
   } else if (opponents.length > 0) {
@@ -110,14 +157,12 @@ function handleOpponentChange() {
     setActiveOpponent(selected);
   }
 
-  // Update UI subheaders
   const loadedGamesSub = document.getElementById('loadedGamesSubheader');
   if (loadedGamesSub) loadedGamesSub.textContent = `For ${selected || 'Selected Team'}`;
 
   const rosterSub = document.getElementById('rosterSubheader');
   if (rosterSub) rosterSub.textContent = `Roster and handedness settings for ${selected || 'Selected Team'}.`;
 
-  // Refresh visible tab
   renderUploadingTab();
 
   const oppView = document.getElementById('view-opponent');
@@ -131,9 +176,6 @@ function handleOpponentChange() {
   }
 }
 
-/**
- * Prompts user to add a new opponent team.
- */
 function addOpponent() {
   const name = prompt("Enter new opponent team name:");
   if (name && name.trim()) {
@@ -144,9 +186,6 @@ function addOpponent() {
   }
 }
 
-/**
- * Prompts user to rename the currently active opponent team.
- */
 function renameOpponent() {
   const selectEl = document.getElementById('opponentSelect');
   if (!selectEl) return;
@@ -165,18 +204,12 @@ function renameOpponent() {
 // 3. UPLOADING TAB & GEMINI GAME LOG PROCESSING
 // ==========================================
 
-/**
- * Renders loaded games list and roster table for active opponent.
- */
 function renderUploadingTab() {
   const activeOpponent = getActiveOpponent();
   renderGamesList(activeOpponent);
   renderRosterTable(activeOpponent);
 }
 
-/**
- * Renders stored play-by-play logs for active opponent.
- */
 function renderGamesList(opponentName) {
   const container = document.getElementById('gamesListContainer');
   if (!container) return;
@@ -224,18 +257,18 @@ CRITICAL TEAM DETERMINATION RULES:
 4. Assign every player strictly to their correct team based on whether they are batting or pitching during top/bottom halves.
 
 Task:
-Analyze the raw GameChanger text below and return ONLY valid JSON using this exact structure:
+Analyze the raw GameChanger text below and return ONLY valid JSON using this exact array format:
 
 {
   "teams": {
     "away": "String",
     "home": "String"
   },
-  "hitters": {
-    "Player Name": {
-      "name": "String",
+  "hitters": [
+    {
+      "name": "First Last",
       "number": "00",
-      "team": "String",
+      "team": "Team Name",
       "pa": 0,
       "ab": 0,
       "hits": 0,
@@ -254,12 +287,12 @@ Analyze the raw GameChanger text below and return ONLY valid JSON using this exa
         }
       ]
     }
-  },
-  "pitchers": {
-    "Pitcher Name": {
-      "name": "String",
+  ],
+  "pitchers": [
+    {
+      "name": "First Last",
       "number": "00",
-      "team": "String",
+      "team": "Team Name",
       "outs": 0,
       "bf": 0,
       "h": 0,
@@ -267,7 +300,7 @@ Analyze the raw GameChanger text below and return ONLY valid JSON using this exa
       "so": 0,
       "hr": 0
     }
-  }
+  ]
 }
 
 RAW PLAY-BY-PLAY LOG:
@@ -288,8 +321,12 @@ ${rawText}
 
       if (response.ok) {
         const data = await response.json();
-        const rawJsonResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawJsonResponse) return JSON.parse(rawJsonResponse);
+        let rawJsonResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawJsonResponse) {
+          // Clean potential markdown code blocks
+          rawJsonResponse = rawJsonResponse.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+          return JSON.parse(rawJsonResponse);
+        }
       } else {
         lastError = await response.text();
       }
@@ -339,60 +376,62 @@ async function handleSaveGameLog() {
   if (statusEl) statusEl.textContent = "⏳ Analyzing game log with Gemini AI...";
 
   try {
-    // 1. Process log through Gemini AI
     const parsedData = await parseGameLogWithGemini(rawText.trim(), apiKey);
 
-    // 2. Format & store game log
     const gameObj = {
       id: Date.now().toString(),
       date: dateVal || new Date().toISOString().split('T')[0],
       notes: notesVal || 'Game Log',
       rawText: rawText.trim(),
-      parsedData: parsedData // Stored directly for UI renderers
+      parsedData: parsedData
     };
 
     saveGameLog(activeOpponent, gameObj);
 
-    // 3. Merge extracted players into saved roster
+    // Merge extracted players safely into roster
     const currentRoster = getOpponentRoster(activeOpponent);
     const rosterMap = {};
-    currentRoster.forEach(p => { rosterMap[p.name.trim().toLowerCase()] = p; });
+    currentRoster.forEach(p => { 
+      if (p && p.name) rosterMap[p.name.trim().toLowerCase()] = p; 
+    });
 
-    if (parsedData.hitters) {
-      Object.values(parsedData.hitters).forEach(h => {
-        const cleanNameKey = h.name.trim().toLowerCase();
-        if (!rosterMap[cleanNameKey]) {
-          currentRoster.push({
-            name: h.name.trim(),
-            number: h.number && h.number !== '--' ? h.number : '00',
-            bats: 'R',
-            throws: 'R',
-            pos: 'DH'
-          });
-          rosterMap[cleanNameKey] = true;
-        }
-      });
-    }
+    const parsedHitters = normalizePlayerList(parsedData.hitters, activeOpponent);
+    const parsedPitchers = normalizePlayerList(parsedData.pitchers, activeOpponent);
 
-    if (parsedData.pitchers) {
-      Object.values(parsedData.pitchers).forEach(p => {
-        const cleanNameKey = p.name.trim().toLowerCase();
-        if (!rosterMap[cleanNameKey]) {
-          currentRoster.push({
-            name: p.name.trim(),
-            number: p.number && p.number !== '--' ? p.number : '00',
-            bats: 'R',
-            throws: 'R',
-            pos: 'P'
-          });
-          rosterMap[cleanNameKey] = true;
-        }
-      });
-    }
+    parsedHitters.forEach(h => {
+      if (!h || !h.name) return;
+      const cleanNameKey = h.name.trim().toLowerCase();
+      if (!rosterMap[cleanNameKey]) {
+        const newPlayer = {
+          name: h.name.trim(),
+          number: (h.number && h.number !== '--') ? h.number : '00',
+          bats: 'R',
+          throws: 'R',
+          pos: 'DH'
+        };
+        currentRoster.push(newPlayer);
+        rosterMap[cleanNameKey] = newPlayer;
+      }
+    });
+
+    parsedPitchers.forEach(p => {
+      if (!p || !p.name) return;
+      const cleanNameKey = p.name.trim().toLowerCase();
+      if (!rosterMap[cleanNameKey]) {
+        const newPlayer = {
+          name: p.name.trim(),
+          number: (p.number && p.number !== '--') ? p.number : '00',
+          bats: 'R',
+          throws: 'R',
+          pos: 'P'
+        };
+        currentRoster.push(newPlayer);
+        rosterMap[cleanNameKey] = newPlayer;
+      }
+    });
 
     saveOpponentRoster(activeOpponent, currentRoster);
 
-    // Reset Form
     if (document.getElementById('pbpInput')) document.getElementById('pbpInput').value = '';
     if (document.getElementById('gameNotesInput')) document.getElementById('gameNotesInput').value = '';
 
@@ -410,17 +449,10 @@ async function handleSaveGameLog() {
   }
 }
 
-/**
- * Fallback parser function to convert stored games seamlessly into parsed objects
- */
 function parseGameLog(rawText, roster) {
-  // If game is loaded from storage and already contains parsedData from Gemini
-  return { hitters: {}, pitchers: {} };
+  return { hitters: [], pitchers: [] };
 }
 
-/**
- * Removes a saved game log by ID.
- */
 function handleDeleteGame(gameId) {
   const activeOpponent = getActiveOpponent();
   if (confirm("Are you sure you want to delete this game log?")) {
@@ -429,9 +461,6 @@ function handleDeleteGame(gameId) {
   }
 }
 
-/**
- * Renders opponent roster table for inline editing.
- */
 function renderRosterTable(opponentName) {
   const tbody = document.getElementById('rosterTableBody');
   if (!tbody) return;
@@ -482,9 +511,6 @@ function renderRosterTable(opponentName) {
   });
 }
 
-/**
- * Updates individual roster field and saves to localStorage.
- */
 function updateRosterPlayer(idx, field, value) {
   const activeOpponent = getActiveOpponent();
   const roster = getOpponentRoster(activeOpponent);
@@ -494,9 +520,6 @@ function updateRosterPlayer(idx, field, value) {
   }
 }
 
-/**
- * Removes player entry from active opponent roster.
- */
 function removeRosterPlayer(idx) {
   const activeOpponent = getActiveOpponent();
   const roster = getOpponentRoster(activeOpponent);
@@ -505,9 +528,6 @@ function removeRosterPlayer(idx) {
   renderRosterTable(activeOpponent);
 }
 
-/**
- * Adds a new blank player row to the active roster.
- */
 function handleManualAddPlayer() {
   const activeOpponent = getActiveOpponent();
   if (!activeOpponent) return;
@@ -527,11 +547,6 @@ function handleManualAddPlayer() {
 // 4. SPRAY CHART GENERATOR
 // ==========================================
 
-/**
- * Generates interactive SVG baseball field spray chart with hit/out dots.
- * @param {Array} sprayList - Array of spray events [{ location, result, type }]
- * @returns {string} SVG String
- */
 function generateSprayChartSvg(sprayList = []) {
   const locationCoordinates = {
     'left field': { x: 35, y: 30 },
@@ -544,10 +559,7 @@ function generateSprayChartSvg(sprayList = []) {
     'second base': { x: 120, y: 60 },
     'first base': { x: 135, y: 75 },
     'pitcher': { x: 100, y: 80 },
-    'catcher': { x: 100, y: 110 },
-    'shallow left': { x: 50, y: 50 },
-    'shallow right': { x: 150, y: 50 },
-    'deep center': { x: 100, y: 12 }
+    'catcher': { x: 100, y: 110 }
   };
 
   let dotsSvg = '';
@@ -565,7 +577,6 @@ function generateSprayChartSvg(sprayList = []) {
       else coords = locationCoordinates['center field'];
     }
 
-    // Deterministic organic plot jitter using item properties and index
     const seed = (item.type || '').length + (item.result || '').length + index;
     const offsetX = (Math.sin(seed * 999) - 0.5) * 12;
     const offsetY = (Math.cos(seed * 999) - 0.5) * 12;
@@ -574,25 +585,19 @@ function generateSprayChartSvg(sprayList = []) {
     const cy = Math.max(15, Math.min(115, coords.y + offsetY));
 
     const isHit = item.result === 'hit';
-    const color = isHit ? '#34d399' : '#f87171'; // emerald-400 : rose-400
+    const color = isHit ? '#34d399' : '#f87171';
 
     dotsSvg += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color}" opacity="0.85" stroke="#0f172a" stroke-width="0.75"><title>${item.type} to ${item.location || 'field'}</title></circle>`;
   });
 
   return `
     <svg viewBox="0 0 200 130" class="w-full max-w-[200px] h-auto drop-shadow">
-      <!-- Outfield Grass Arc -->
       <path d="M 20 100 Q 100 -20 180 100 L 100 115 Z" fill="#022c22" stroke="#059669" stroke-width="1.5" />
-      <!-- Infield Dirt Diamond -->
       <polygon points="100,110 65,80 100,50 135,80" fill="#1e1b18" stroke="#d97706" stroke-width="1" />
-      <!-- Pitcher's Mound -->
       <circle cx="100" cy="80" r="4" fill="#d97706" />
-      <!-- Home Plate -->
       <polygon points="100,110 96,113 96,116 104,116 104,113" fill="#ffffff" />
-      <!-- Foul Lines -->
       <line x1="100" y1="110" x2="20" y2="100" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2,2" />
       <line x1="100" y1="110" x2="180" y2="100" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2,2" />
-      <!-- Extracted Hit & Out Spray Dots -->
       ${dotsSvg}
     </svg>
   `;
@@ -602,9 +607,6 @@ function generateSprayChartSvg(sprayList = []) {
 // 5. OPPONENT SCOUTING REPORT RENDERER
 // ==========================================
 
-/**
- * Aggregates all game logs for active opponent and renders Pitcher and Hitter cards.
- */
 function renderOpponentReport() {
   const selectEl = document.getElementById('opponentSelect');
   const hitterContainer = document.getElementById('hitterCardsContainer');
@@ -632,51 +634,48 @@ function renderOpponentReport() {
     return;
   }
 
-  // Aggregation containers
   const aggregatedHitters = {};
   const aggregatedPitchers = {};
 
   games.forEach(game => {
     const parsed = game.parsedData || parseGameLog(game.rawText, roster);
 
-    // Aggregate Hitters
-    if (parsed.hitters) {
-      Object.values(parsed.hitters).forEach(hitter => {
-        if (!aggregatedHitters[hitter.name]) {
-          aggregatedHitters[hitter.name] = { ...hitter, spray: [...(hitter.spray || [])] };
-        } else {
-          const agg = aggregatedHitters[hitter.name];
-          agg.pa += hitter.pa || 0;
-          agg.ab += hitter.ab || 0;
-          agg.hits += hitter.hits || 0;
-          agg.singles += hitter.singles || 0;
-          agg.doubles += hitter.doubles || 0;
-          agg.triples += hitter.triples || 0;
-          agg.hr += hitter.hr || 0;
-          agg.bb += hitter.bb || 0;
-          agg.so += hitter.so || 0;
-          agg.hbp += hitter.hbp || 0;
-          agg.spray = agg.spray.concat(hitter.spray || []);
-        }
-      });
-    }
+    const extractedHitters = normalizePlayerList(parsed.hitters, activeOpponent);
+    extractedHitters.forEach(hitter => {
+      if (!hitter || !hitter.name) return;
+      if (!aggregatedHitters[hitter.name]) {
+        aggregatedHitters[hitter.name] = { ...hitter, spray: [...(hitter.spray || [])] };
+      } else {
+        const agg = aggregatedHitters[hitter.name];
+        agg.pa += hitter.pa || 0;
+        agg.ab += hitter.ab || 0;
+        agg.hits += hitter.hits || 0;
+        agg.singles += hitter.singles || 0;
+        agg.doubles += hitter.doubles || 0;
+        agg.triples += hitter.triples || 0;
+        agg.hr += hitter.hr || 0;
+        agg.bb += hitter.bb || 0;
+        agg.so += hitter.so || 0;
+        agg.hbp += hitter.hbp || 0;
+        agg.spray = agg.spray.concat(hitter.spray || []);
+      }
+    });
 
-    // Aggregate Pitchers
-    if (parsed.pitchers) {
-      Object.values(parsed.pitchers).forEach(pitcher => {
-        if (!aggregatedPitchers[pitcher.name]) {
-          aggregatedPitchers[pitcher.name] = { ...pitcher };
-        } else {
-          const agg = aggregatedPitchers[pitcher.name];
-          agg.outs += pitcher.outs || 0;
-          agg.bf += pitcher.bf || 0;
-          agg.h += pitcher.h || 0;
-          agg.bb += pitcher.bb || 0;
-          agg.so += pitcher.so || 0;
-          agg.hr += pitcher.hr || 0;
-        }
-      });
-    }
+    const extractedPitchers = normalizePlayerList(parsed.pitchers, activeOpponent);
+    extractedPitchers.forEach(pitcher => {
+      if (!pitcher || !pitcher.name) return;
+      if (!aggregatedPitchers[pitcher.name]) {
+        aggregatedPitchers[pitcher.name] = { ...pitcher };
+      } else {
+        const agg = aggregatedPitchers[pitcher.name];
+        agg.outs += pitcher.outs || 0;
+        agg.bf += pitcher.bf || 0;
+        agg.h += pitcher.h || 0;
+        agg.bb += pitcher.bb || 0;
+        agg.so += pitcher.so || 0;
+        agg.hr += pitcher.hr || 0;
+      }
+    });
   });
 
   // --- RENDER PITCHERS ---
@@ -705,7 +704,6 @@ function renderOpponentReport() {
             </div>
           </div>
 
-          <!-- Key Pitcher Metrics -->
           <div class="grid grid-cols-3 gap-2 text-center my-3 py-2 bg-slate-950/80 rounded-lg border border-slate-800/80">
             <div>
               <div class="text-[10px] text-slate-500 uppercase font-bold">IP</div>
@@ -721,7 +719,6 @@ function renderOpponentReport() {
             </div>
           </div>
 
-          <!-- Pitching Line Breakdown -->
           <div class="text-[11px] text-slate-400 space-y-1">
             <div class="flex justify-between"><span>Batters Faced (BF):</span> <span class="font-bold text-slate-200">${p.bf}</span></div>
             <div class="flex justify-between"><span>Strikeouts (K):</span> <span class="font-bold text-emerald-400">${p.so}</span></div>
@@ -804,9 +801,6 @@ function renderOpponentReport() {
 // 6. PRE-GAME DASHBOARD CONTROLLER
 // ==========================================
 
-/**
- * Renders tactical callout cards, team totals, and the quick dugout cheat sheet.
- */
 function renderDashboard() {
   const nameEl = document.getElementById('dashOpponentName');
   const badgeEl = document.getElementById('dashGameCountBadge');
@@ -836,51 +830,49 @@ function renderDashboard() {
     return;
   }
 
-  // Aggregate stats across all games
   const hitters = {};
   const pitchers = {};
 
   games.forEach(game => {
     const parsed = game.parsedData || parseGameLog(game.rawText, roster);
 
-    if (parsed.hitters) {
-      Object.values(parsed.hitters).forEach(h => {
-        if (!hitters[h.name]) hitters[h.name] = { ...h, spray: [...(h.spray || [])] };
-        else {
-          hitters[h.name].pa += h.pa || 0;
-          hitters[h.name].ab += h.ab || 0;
-          hitters[h.name].hits += h.hits || 0;
-          hitters[h.name].singles += h.singles || 0;
-          hitters[h.name].doubles += h.doubles || 0;
-          hitters[h.name].triples += h.triples || 0;
-          hitters[h.name].hr += h.hr || 0;
-          hitters[h.name].bb += h.bb || 0;
-          hitters[h.name].so += h.so || 0;
-          hitters[h.name].hbp += h.hbp || 0;
-          hitters[h.name].spray = hitters[h.name].spray.concat(h.spray || []);
-        }
-      });
-    }
+    const extractedHitters = normalizePlayerList(parsed.hitters, activeOpponent);
+    extractedHitters.forEach(h => {
+      if (!h || !h.name) return;
+      if (!hitters[h.name]) hitters[h.name] = { ...h, spray: [...(h.spray || [])] };
+      else {
+        hitters[h.name].pa += h.pa || 0;
+        hitters[h.name].ab += h.ab || 0;
+        hitters[h.name].hits += h.hits || 0;
+        hitters[h.name].singles += h.singles || 0;
+        hitters[h.name].doubles += h.doubles || 0;
+        hitters[h.name].triples += h.triples || 0;
+        hitters[h.name].hr += h.hr || 0;
+        hitters[h.name].bb += h.bb || 0;
+        hitters[h.name].so += h.so || 0;
+        hitters[h.name].hbp += h.hbp || 0;
+        hitters[h.name].spray = hitters[h.name].spray.concat(h.spray || []);
+      }
+    });
 
-    if (parsed.pitchers) {
-      Object.values(parsed.pitchers).forEach(p => {
-        if (!pitchers[p.name]) pitchers[p.name] = { ...p };
-        else {
-          pitchers[p.name].outs += p.outs || 0;
-          pitchers[p.name].bf += p.bf || 0;
-          pitchers[p.name].h += p.h || 0;
-          pitchers[p.name].bb += p.bb || 0;
-          pitchers[p.name].so += p.so || 0;
-          pitchers[p.name].hr += p.hr || 0;
-        }
-      });
-    }
+    const extractedPitchers = normalizePlayerList(parsed.pitchers, activeOpponent);
+    extractedPitchers.forEach(p => {
+      if (!p || !p.name) return;
+      if (!pitchers[p.name]) pitchers[p.name] = { ...p };
+      else {
+        pitchers[p.name].outs += p.outs || 0;
+        pitchers[p.name].bf += p.bf || 0;
+        pitchers[p.name].h += p.h || 0;
+        pitchers[p.name].bb += p.bb || 0;
+        pitchers[p.name].so += p.so || 0;
+        pitchers[p.name].hr += p.hr || 0;
+      }
+    });
   });
 
   const hitterList = Object.values(hitters);
   const pitcherList = Object.values(pitchers);
 
-  // Calculate slash lines
   hitterList.forEach(h => {
     h.avgNum = h.ab > 0 ? (h.hits / h.ab) : 0;
     h.obpNum = h.pa > 0 ? ((h.hits + h.bb + h.hbp) / h.pa) : 0;
@@ -892,13 +884,12 @@ function renderDashboard() {
     h.slg = h.slgNum.toFixed(3).replace(/^0/, '');
   });
 
-  // --- 1. RENDER CALLOUT CARDS ---
+  // Top Callouts
   const topHitter = hitterList.length ? [...hitterList].sort((a, b) => b.opsNum - a.opsNum)[0] : null;
   const powerBat = hitterList.length ? [...hitterList].sort((a, b) => b.hr - a.hr || b.slgNum - a.slgNum)[0] : null;
   const acePitcher = pitcherList.length ? [...pitcherList].sort((a, b) => b.outs - a.outs || b.so - a.so)[0] : null;
 
   calloutsGrid.innerHTML = `
-    <!-- Top Overall Threat -->
     <div class="bg-slate-900 border border-emerald-900/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
       <div class="absolute top-0 right-0 bg-emerald-500/10 text-emerald-400 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg border-b border-l border-emerald-800/40">
         🔥 Top Hitting Threat
@@ -915,7 +906,6 @@ function renderDashboard() {
       </div>
     </div>
 
-    <!-- Power Threat -->
     <div class="bg-slate-900 border border-amber-900/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
       <div class="absolute top-0 right-0 bg-amber-500/10 text-amber-400 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg border-b border-l border-amber-800/40">
         💥 Power Bat
@@ -932,7 +922,6 @@ function renderDashboard() {
       </div>
     </div>
 
-    <!-- Ace Pitcher -->
     <div class="bg-slate-900 border border-sky-900/60 p-4 rounded-xl shadow-lg relative overflow-hidden">
       <div class="absolute top-0 right-0 bg-sky-500/10 text-sky-400 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg border-b border-l border-sky-800/40">
         ⚾ Primary Arm
@@ -950,7 +939,7 @@ function renderDashboard() {
     </div>
   `;
 
-  // --- 2. RENDER TEAM STATS BAR ---
+  // Team Stats Bar
   const teamAB = hitterList.reduce((acc, h) => acc + h.ab, 0);
   const teamHits = hitterList.reduce((acc, h) => acc + h.hits, 0);
   const teamHR = hitterList.reduce((acc, h) => acc + h.hr, 0);
@@ -983,7 +972,7 @@ function renderDashboard() {
     `;
   }
 
-  // --- 3. RENDER CHEAT SHEET TABLE ---
+  // Cheat Sheet Table
   tbody.innerHTML = '';
   hitterList.forEach(h => {
     let tendency = 'Balanced Field';
