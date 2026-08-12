@@ -149,7 +149,7 @@ function addOpponent() {
  */
 function renameOpponent() {
   const selectEl = document.getElementById('opponentSelect');
-  if (!selectEl || !selectEl.value) return;
+  if (!selectEl) return;
 
   const currentName = selectEl.value;
   const newName = prompt("Rename opponent team:", currentName);
@@ -211,45 +211,61 @@ function renderGamesList(opponentName) {
  * Calls Gemini API to parse GameChanger play-by-play log into structured JSON
  */
 async function parseGameLogWithGemini(rawText, apiKey) {
-  const models = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
   let lastError = null;
 
   const promptText = `
-You are an expert baseball play-by-play data analyst.
-Analyze the following GameChanger text log and extract stats, team affiliations, and spray chart location data into a single valid JSON object.
+Role: You are a professional baseball data scientist and GameChanger play-by-play parser. Your sole task is to extract game data into a clean, structured JSON format.
 
-RULES:
-1. Determine Home and Away teams based on inning headers (Top = Away team batting / Home team pitching; Bottom = Home team batting / Away team pitching).
-2. Track pitcher changes accurately across innings (including lineup changes, substitutions, and inline pitching notes).
-3. For EVERY hitter, compute cumulative stats:
-   - pa (plate appearances), ab (at-bats), hits, singles, doubles, triples, hr, bb (walks), so (strikeouts), hbp (hit by pitch)
-4. For EVERY hitter, build a "spray" array capturing hit/out contact:
-   - location MUST be one of: "left field", "left-center", "center field", "right-center", "right field", "shortstop", "third base", "second base", "first base", "pitcher", "catcher"
-   - type MUST be one of: "Line Drive", "Fly Ball", "Ground Ball", "Pop Fly", "Bunt"
-   - result MUST be either: "hit" or "out"
-5. For EVERY pitcher, compute cumulative pitching stats:
-   - bf (batters faced), outs (total outs recorded, e.g., 3 per full inning), h (hits allowed), bb (walks allowed), so (strikeouts), hr (home runs allowed)
+CRITICAL TEAM DETERMINATION RULES:
+1. Look for inning headers in the log (e.g., "Top of 1st - [Team A]", "Bottom of 1st - [Team B]").
+2. Top of Inning: The team listed in the header is the AWAY team (Batting). The opposing team is in the field/pitching (HOME team).
+3. Bottom of Inning: The team listed in the header is the HOME team (Batting). The opposing team is in the field/pitching (AWAY team).
+4. Assign every player strictly to their correct team based on whether they are batting or pitching during top/bottom halves.
 
-JSON SCHEMA TO RETURN:
+Task:
+Analyze the raw GameChanger text below and return ONLY valid JSON using this exact structure:
+
 {
-  "teams": { "home": "Team Name", "away": "Team Name" },
+  "teams": {
+    "away": "String",
+    "home": "String"
+  },
   "hitters": {
     "Player Name": {
-      "name": "Player Name",
+      "name": "String",
       "number": "00",
-      "team": "Team Name",
-      "pa": 0, "ab": 0, "hits": 0, "singles": 0, "doubles": 0, "triples": 0, "hr": 0, "bb": 0, "so": 0, "hbp": 0,
+      "team": "String",
+      "pa": 0,
+      "ab": 0,
+      "hits": 0,
+      "singles": 0,
+      "doubles": 0,
+      "triples": 0,
+      "hr": 0,
+      "bb": 0,
+      "so": 0,
+      "hbp": 0,
       "spray": [
-        { "location": "left field", "type": "Line Drive", "result": "hit" }
+        {
+          "location": "left field | left-center | center field | right-center | right field | third base | shortstop | second base | first base | pitcher | catcher",
+          "type": "Line Drive | Fly Ball | Ground Ball | Pop Fly | Bunt",
+          "result": "hit | out"
+        }
       ]
     }
   },
   "pitchers": {
     "Pitcher Name": {
-      "name": "Pitcher Name",
+      "name": "String",
       "number": "00",
-      "team": "Team Name",
-      "bf": 0, "outs": 0, "h": 0, "bb": 0, "so": 0, "hr": 0
+      "team": "String",
+      "outs": 0,
+      "bf": 0,
+      "h": 0,
+      "bb": 0,
+      "so": 0,
+      "hr": 0
     }
   }
 }
