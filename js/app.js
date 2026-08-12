@@ -14,6 +14,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 
 /**
+ * Helper to convert an image File input into a Base64 string for Gemini API
+ * @param {File} file 
+ * @returns {Promise<string|null>} Base64 data string without header
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]); // Extract raw base64 portion
+    reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * Formats baseball Outs into standard Innings Pitched notation (e.g., 14 outs -> "4.2")
  * @param {number} outs 
  * @returns {string} Standard IP string
@@ -201,7 +216,7 @@ function renameOpponent() {
 }
 
 // ==========================================
-// 3. UPLOADING TAB & GEMINI GAME LOG PROCESSING
+// 3. UPLOADING TAB & GEMINI VISION GAME LOG PROCESSING
 // ==========================================
 
 function renderUploadingTab() {
@@ -241,44 +256,28 @@ function renderGamesList(opponentName) {
 }
 
 /**
- * Calls Gemini API to parse GameChanger play-by-play log into structured JSON
+ * Calls Gemini Multimodal (Vision + Text) to process Game Log alongside Lineup Screenshots
  */
-async function parseGameLogWithGemini(rawText, apiKey) {
-  const models = ['gemini-2.5-flash', 'gemini-3.6-flash'];
-  let lastError = null;
+async function parseGameLogWithGemini(rawText, apiKey, oppLineupBase64 = null, ourLineupBase64 = null) {
+  const model = 'gemini-3.6-flash';
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   const promptText = `
-Role: You are a professional baseball data scientist and GameChanger play-by-play parser. Your sole task is to extract game data into a clean, structured JSON format.
+Role: You are a professional baseball data scientist and GameChanger parser.
 
-CRITICAL TEAM DETERMINATION RULES:
-1. Look for inning headers in the log (e.g., "Top of 1st - [Team A]", "Bottom of 1st - [Team B]").
-2. Top of Inning: The team listed in the header is the AWAY team (Batting). The opposing team is in the field/pitching (HOME team).
-3. Bottom of Inning: The team listed in the header is the HOME team (Batting). The opposing team is in the field/pitching (AWAY team).
-4. Assign every player strictly to their correct team based on whether they are batting or pitching during top/bottom halves.
+INSTRUCTIONS:
+1. If lineup screenshots are provided in the attached image(s), read all player names, jersey numbers (#), and positions directly from the image(s).
+2. Use these exact names and jersey numbers when mapping play-by-play stats from the provided text log.
+3. Assign hitters and pitchers strictly to their team based on top/bottom inning halves.
 
-Task:
-Analyze the raw GameChanger text below and return ONLY valid JSON using this exact array format:
-
+Analyze the image(s) and play-by-play text log, and return ONLY valid JSON matching this schema:
 {
-  "teams": {
-    "away": "String",
-    "home": "String"
-  },
   "hitters": [
     {
-      "name": "First Last",
+      "name": "Full Name from Image/Log",
       "number": "00",
       "team": "Team Name",
-      "pa": 0,
-      "ab": 0,
-      "hits": 0,
-      "singles": 0,
-      "doubles": 0,
-      "triples": 0,
-      "hr": 0,
-      "bb": 0,
-      "so": 0,
-      "hbp": 0,
+      "pa": 0, "ab": 0, "hits": 0, "singles": 0, "doubles": 0, "triples": 0, "hr": 0, "bb": 0, "so": 0, "hbp": 0,
       "spray": [
         {
           "location": "left field | left-center | center field | right-center | right field | third base | shortstop | second base | first base | pitcher | catcher",
@@ -290,31 +289,42 @@ Analyze the raw GameChanger text below and return ONLY valid JSON using this exa
   ],
   "pitchers": [
     {
-      "name": "First Last",
+      "name": "Full Name from Image/Log",
       "number": "00",
       "team": "Team Name",
-      "outs": 0,
-      "bf": 0,
-      "h": 0,
-      "bb": 0,
-      "so": 0,
-      "hr": 0
+      "outs": 0, "bf": 0, "h": 0, "bb": 0, "so": 0, "hr": 0
     }
   ]
 }
 
-RAW PLAY-BY-PLAY LOG:
+PLAY-BY-PLAY TEXT LOG:
 ${rawText}
   `;
 
-  for (const model of models) {
+  // Build Multimodal API Payload
+  const contentsParts = [{ text: promptText }];
+
+  if (oppLineupBase64) {
+    contentsParts.push({
+      inlineData: { mimeType: "image/png", data: oppLineupBase64 }
+    });
+  }
+
+  if (ourLineupBase64) {
+    contentsParts.push({
+      inlineData: { mimeType: "image/png", data: ourLineupBase64 }
+    });
+  }
+
+  // Execute request with automatic retry logic
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: promptText }] }],
+          contents: [{ parts: contentsParts }],
           generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
         })
       });
@@ -323,23 +333,26 @@ ${rawText}
         const data = await response.json();
         let rawJsonResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (rawJsonResponse) {
-          // Clean potential markdown code blocks
           rawJsonResponse = rawJsonResponse.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
           return JSON.parse(rawJsonResponse);
         }
       } else {
-        lastError = await response.text();
+        if (response.status === 503 || response.status === 429) {
+          const statusEl = document.getElementById('uploadStatus');
+          if (statusEl) statusEl.textContent = `⏳ Server busy. Retrying (${attempt}/3)...`;
+          await delay(1500 * attempt);
+          continue;
+        }
+        throw new Error(await response.text());
       }
     } catch (err) {
-      lastError = err.message;
+      if (attempt === 3) throw err;
     }
   }
-
-  throw new Error(`Gemini API Error: ${lastError}`);
 }
 
 /**
- * Saves input game log using Gemini AI extraction and auto-merges roster entries.
+ * Handles Game Log form submission with Vision images & auto-merges roster entries.
  */
 async function handleSaveGameLog() {
   const activeOpponent = getActiveOpponent();
@@ -353,6 +366,9 @@ async function handleSaveGameLog() {
   const rawText = document.getElementById('pbpInput')?.value;
   const statusEl = document.getElementById('uploadStatus');
 
+  const oppImgFile = document.getElementById('oppLineupImageInput')?.files[0];
+  const ourImgFile = document.getElementById('ourLineupImageInput')?.files[0];
+
   let apiKey = document.getElementById('apiKeyInput')?.value.trim() || localStorage.getItem('gemini_api_key');
 
   if (!apiKey) {
@@ -364,7 +380,7 @@ async function handleSaveGameLog() {
   }
 
   if (!apiKey) {
-    alert("An API key is required to process game logs with Gemini.");
+    alert("An API key is required to process logs.");
     return;
   }
 
@@ -373,10 +389,16 @@ async function handleSaveGameLog() {
     return;
   }
 
-  if (statusEl) statusEl.textContent = "⏳ Analyzing game log with Gemini AI...";
-
   try {
-    const parsedData = await parseGameLogWithGemini(rawText.trim(), apiKey);
+    if (statusEl) statusEl.textContent = "📷 Converting images & sending to Gemini Vision...";
+    
+    // Convert uploaded screenshots to Base64
+    const oppBase64 = oppImgFile ? await fileToBase64(oppImgFile) : null;
+    const ourBase64 = ourImgFile ? await fileToBase64(ourImgFile) : null;
+
+    if (statusEl) statusEl.textContent = "🧠 Analyzing lineup image & game log with Gemini...";
+
+    const parsedData = await parseGameLogWithGemini(rawText.trim(), apiKey, oppBase64, ourBase64);
 
     const gameObj = {
       id: Date.now().toString(),
@@ -388,7 +410,7 @@ async function handleSaveGameLog() {
 
     saveGameLog(activeOpponent, gameObj);
 
-    // Merge extracted players safely into roster
+    // Auto-update persistent roster with newly recognized image players
     const currentRoster = getOpponentRoster(activeOpponent);
     const rosterMap = {};
     currentRoster.forEach(p => { 
@@ -432,11 +454,14 @@ async function handleSaveGameLog() {
 
     saveOpponentRoster(activeOpponent, currentRoster);
 
+    // Clear inputs on success
     if (document.getElementById('pbpInput')) document.getElementById('pbpInput').value = '';
     if (document.getElementById('gameNotesInput')) document.getElementById('gameNotesInput').value = '';
+    if (document.getElementById('oppLineupImageInput')) document.getElementById('oppLineupImageInput').value = '';
+    if (document.getElementById('ourLineupImageInput')) document.getElementById('ourLineupImageInput').value = '';
 
     if (statusEl) {
-      statusEl.textContent = "✅ Game log processed & roster updated!";
+      statusEl.textContent = "✅ Game log & lineup processed successfully!";
       setTimeout(() => { statusEl.textContent = ""; }, 3500);
     }
 
